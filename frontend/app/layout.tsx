@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { ToastProvider } from "@/components/ui/toast";
 import { ToastViewport } from "@/components/ui/toast";
 import { Toaster } from "@/components/ui/toaster"
+import { AuthProvider } from './AuthProvider';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,23 +28,25 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <ToastProvider>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-            {children}
-          </ThemeProvider>
-          <Toaster />
-          <ToastViewport />
-        </ToastProvider>
-      </body>
-    </html>
+    <AuthProvider>
+      <html lang="en">
+        <body
+          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        >
+          <ToastProvider>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              {children}
+            </ThemeProvider>
+            <Toaster />
+            <ToastViewport />
+          </ToastProvider>
+        </body>
+      </html>
+    </AuthProvider>
   );
 }

@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 23, "column": 0}, "map": {"version":3,"sources":["turbopack://[project]/middleware.ts"],"sourcesContent":["import { withAuth } from \"@kinde-oss/kinde-auth-nextjs/middleware\";\n\nexport default function middleware(req: any) {\n    return withAuth(req);\n}\n\nexport const config = {\n    matcher: [\n        // Run on everything but Next internals and static files\n        '/((?!_next|[^?]*\\\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',\n    ]\n};"],"names":[],"mappings":";;;;AAAA;;AAEe,SAAS,WAAW,GAAQ;IACvC,OAAO,CAAA,GAAA,wLAAA,CAAA,WAAQ,AAAD,EAAE;AACpB;AAEO,MAAM,SAAS;IAClB,SAAS;QACL,wDAAwD;QACxD;KACH;AACL"}},
+    {"offset": {"line": 38, "column": 0}, "map": {"version":3,"sources":[],"names":[],"mappings":"A"}}]
+}
