@@ -23,13 +23,18 @@ var { r: __turbopack_require__, f: __turbopack_module_context__, i: __turbopack_
 {
 __turbopack_esm__({
     "config": (()=>config),
-    "default": (()=>middleware)
+    "default": (()=>__TURBOPACK__default__export__)
 });
 var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$kinde$2d$oss$2f$kinde$2d$auth$2d$nextjs$2f$dist$2f$middleware$2f$index$2e$js__$5b$middleware$5d$__$28$ecmascript$29$__ = __turbopack_import__("[project]/node_modules/@kinde-oss/kinde-auth-nextjs/dist/middleware/index.js [middleware] (ecmascript)");
 ;
-function middleware(req) {
+const __TURBOPACK__default__export__ = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$kinde$2d$oss$2f$kinde$2d$auth$2d$nextjs$2f$dist$2f$middleware$2f$index$2e$js__$5b$middleware$5d$__$28$ecmascript$29$__["withAuth"])(async function middleware(req) {
     return (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$kinde$2d$oss$2f$kinde$2d$auth$2d$nextjs$2f$dist$2f$middleware$2f$index$2e$js__$5b$middleware$5d$__$28$ecmascript$29$__["withAuth"])(req);
-}
+}, {
+    // Middleware still runs on all routes, but doesn't protect the blog route
+    publicPaths: [
+        "/"
+    ]
+});
 const config = {
     matcher: [
         // Run on everything but Next internals and static files

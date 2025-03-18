@@ -23,10 +23,9 @@ import {
     CardFooter,
     CardHeader,
     CardTitle,
-} from "@/components/ui/card"
-import { ToastAction } from "@/components/ui/toast"
-import { useToast } from "@/hooks/use-toast"
-
+} from "@/components/ui/card";
+import { ToastAction } from "@/components/ui/toast";
+import { useToast } from "@/hooks/use-toast";
 
 const FilePreview = ({ file }: { file: File | null }) => {
     const [preview, setPreview] = useState<string | null>(null);
@@ -48,7 +47,7 @@ const FilePreview = ({ file }: { file: File | null }) => {
     return (
         <div className="mt-4">
             {file.type.startsWith("image/") && preview ? (
-                <Image src={preview} alt="Preview" className="max-w-full max-h-64" />
+                <Image src={preview} alt="Preview" width={200} height={200} className="max-w-full max-h-64" />
             ) : file.type === "application/pdf" ? (
                 <p className="text-sm">PDF selected: {file.name}</p>
             ) : (
@@ -59,16 +58,18 @@ const FilePreview = ({ file }: { file: File | null }) => {
 };
 
 const Dashboard = () => {
-    const { toast } = useToast()
+    const { toast } = useToast();
     const { theme, setTheme } = useTheme();
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
-
-    /* eslint-disable */
     const [analysisResult, setAnalysisResult] = useState<any>(null);
-    /* eslint-enable */
+    const [mounted, setMounted] = useState(false);
 
+    useEffect(() => {
+        setMounted(true);
+        setAnalysisResult(null);
+    }, [selectedFile]);
 
-
+    if (!mounted) return null; // Prevents hydration mismatch
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files ? e.target.files[0] : null;
@@ -80,9 +81,6 @@ const Dashboard = () => {
             setSelectedFile(null);
         }
     };
-    useEffect(() => {
-        setAnalysisResult(null);
-    }, [selectedFile])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -94,19 +92,15 @@ const Dashboard = () => {
 
         try {
             const response = await axios.post("http://localhost:8000/upload_resume/", formData, {
-                headers: {
-                    "Content-Type": "multipart/form-data",
-                },
+                headers: { "Content-Type": "multipart/form-data" },
             });
 
             if (response.status === 201) {
-                console.log("File uploaded successfully!");
                 toast({
                     title: "File Uploaded Successfully",
                     description: `Your file "${selectedFile.name}" was uploaded successfully.`,
                     action: <ToastAction altText="Dismiss">Dismiss</ToastAction>,
                 });
-
             } else {
                 console.error("File upload failed.");
             }
@@ -116,7 +110,7 @@ const Dashboard = () => {
                 title: "Upload Failed",
                 description: "An error occurred during file upload. Please try again.",
                 action: <ToastAction altText="Retry">Retry</ToastAction>,
-                variant: "destructive", // Optional: styling for error notifications
+                variant: "destructive",
             });
         }
     };
@@ -140,69 +134,30 @@ const Dashboard = () => {
         <>
             <div className="flex justify-between shadow-md dark:shadow-gray-800 h-12">
                 <div>
-                    {theme === "dark" ? (
-                        <Image
-                            src="/images/logo_dark.png"
-                            alt="logo"
-                            width={100}
-                            height={10}
-                            style={{ objectFit: "fill", width: "100px", height: "30px" }}
-                            className="mt-2  ml-2"
-                        />
-                    ) : (
-                        <Image
-                            src="/images/logo_light.png"
-                            alt="logo"
-                            width={100}
-                            height={10}
-                            style={{ objectFit: "fill", width: "100px", height: "30px" }}
-                            className="mt-2"
-                        />
-                    )}
+                    <Image
+                        src={theme === "dark" ? "/images/logo_dark.png" : "/images/logo_light.png"}
+                        alt="logo"
+                        width={100}
+                        height={30}
+                        style={{ objectFit: "fill", width: "100px", height: "30px" }}
+                        className="mt-2 ml-2"
+                    />
                 </div>
                 <div className="flex gap-5">
-                    <Toggle onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-                        {theme === "dark" ? (
-                            <Sun className="h-[1.3rem] w-[1.3rem]" />
-                        ) : (
-                            <Moon className="h-[1.3rem] w-[1.3rem]" />
-                        )}
-                        <span className="sr-only">Toggle theme</span>
-                    </Toggle>
+
                     <NavigationMenu>
                         <NavigationMenuList>
-                            <NavigationMenuItem>
-                                <Link href="/">
-                                    <NavigationMenuLink className={navigationMenuTriggerStyle()}>
-                                        Home
-                                    </NavigationMenuLink>
-                                </Link>
-                            </NavigationMenuItem>
-                            <NavigationMenuItem>
-                                <Link href="/About">
-                                    <NavigationMenuLink className={navigationMenuTriggerStyle()}>
-                                        About
-                                    </NavigationMenuLink>
-                                </Link>
-                            </NavigationMenuItem>
-                            <NavigationMenuItem>
-                                <Link href="/contact">
-                                    <NavigationMenuLink className={navigationMenuTriggerStyle()}>
-                                        Contact
-                                    </NavigationMenuLink>
-                                </Link>
-                            </NavigationMenuItem>
-                            <NavigationMenuItem>
-                                <Link href="/help">
-                                    <NavigationMenuLink className={navigationMenuTriggerStyle()}>
-                                        Help
-                                    </NavigationMenuLink>
-                                </Link>
-                            </NavigationMenuItem>
+                            {["Home", "About", "Contact", "Help"].map((item) => (
+                                <NavigationMenuItem key={item}>
+                                    <Link href={`/${item}`} legacyBehavior passHref>
+                                        <NavigationMenuLink className={navigationMenuTriggerStyle()}>{item}</NavigationMenuLink>
+                                    </Link>
+                                </NavigationMenuItem>
+                            ))}
                         </NavigationMenuList>
                     </NavigationMenu>
                 </div>
-            </div>
+            </div >
 
             <div className="flex justify-center mt-20">
                 <div className="w-3/4">
@@ -226,7 +181,7 @@ const Dashboard = () => {
                             Analyze Resume
                         </Button>
                     </div>
-                    {console.log(analysisResult)}
+
                     {analysisResult && (
                         <div className="mt-4 w-full">
                             <Card className="w-full mx-auto shadow-lg">
@@ -235,15 +190,9 @@ const Dashboard = () => {
                                     <CardDescription>Details from the uploaded resume</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <p >
-                                        <strong>Predicted Job:</strong> {analysisResult.predicted_job}
-                                    </p>
-                                    <p className="mt-4">
-                                        <strong>Current Skills:</strong> {analysisResult.skills}
-                                    </p>
-                                    <p className="mt-4">
-                                        <strong>Skills Required:</strong> {analysisResult.skills_required.join(", ")}
-                                    </p>
+                                    <p><strong>Predicted Job:</strong> {analysisResult.predicted_job}</p>
+                                    <p className="mt-4"><strong>Current Skills:</strong> {analysisResult.skills}</p>
+                                    <p className="mt-4"><strong>Skills Required:</strong> {analysisResult.skills_required.join(", ")}</p>
                                 </CardContent>
                                 <CardFooter>
                                     <p className="text-sm text-gray-500">Analysis completed successfully.</p>
@@ -251,7 +200,6 @@ const Dashboard = () => {
                             </Card>
                         </div>
                     )}
-
                 </div>
             </div>
         </>

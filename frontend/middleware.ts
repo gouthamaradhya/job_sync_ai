@@ -1,8 +1,17 @@
 import { withAuth } from "@kinde-oss/kinde-auth-nextjs/middleware";
 
-export default function middleware(req: any) {
-    return withAuth(req);
-}
+export default withAuth(
+    async function middleware(req: any) {
+        return withAuth(req);
+    },
+    {
+        // Middleware still runs on all routes, but doesn't protect the blog route
+        publicPaths: ["/"],
+
+    }
+
+);
+
 
 export const config = {
     matcher: [
