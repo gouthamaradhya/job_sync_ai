@@ -62,7 +62,7 @@ const Page = () => {
             <h1 className="text-2xl font-bold text-logo">
               Job Sync AI
             </h1>
-            <p className="text-mds">AI-powered job matching platform that connects talent with the right opportunities.</p>
+            <p className="text-md">AI-powered job matching platform that connects talent with the right opportunities.</p>
           </div>
           <div className="col-span-1 mt-5">
             <h1 className="text-xl font-bold">

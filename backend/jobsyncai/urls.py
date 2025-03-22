@@ -7,7 +7,7 @@ from myapp import views
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('upload_resume/', views.upload_resume, name='upload_resume'),
-    path('analyze-resume/', views.analyze_resume_view, name='analyze_resume')
+    path('analyze-resume/', views.analyze_resume, name='analyze_resume')
 ]
 
 # Serve media files in development (for local testing)

@@ -18,13 +18,19 @@
       "static/chunks/_e69f0d._.js",
       "static/chunks/_d95469._.js"
     ],
-    "/_not-found/page": [
+    "/dashboard/page": [
       "static/chunks/_22d2ba._.js",
       "static/chunks/app_favicon_ico_mjs_53e3fe._.js",
       "static/chunks/[root of the server]__9d1267._.css",
       "static/chunks/node_modules_257bf4._.js",
       "static/chunks/_89ea8b._.js",
       "static/chunks/app_layout_tsx_61af54._.js",
+      "static/chunks/node_modules_next_e30914._.js",
+      "static/chunks/node_modules_micromark-core-commonmark_dev_lib_a91d55._.js",
+      "static/chunks/node_modules_axios_lib_c4c49c._.js",
+      "static/chunks/node_modules_689ca8._.js",
+      "static/chunks/_551ad5._.js",
+      "static/chunks/app_dashboard_page_tsx_6cc1c4._.js",
       "static/chunks/node_modules_next_dist_compiled_react-dom_1f56dc._.js",
       "static/chunks/node_modules_next_dist_compiled_107ce8._.js",
       "static/chunks/node_modules_next_dist_client_523921._.js",

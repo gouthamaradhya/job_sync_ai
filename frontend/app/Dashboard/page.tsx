@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/card";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
+import ResumeAnalysisResult from "@/components/AnalysisResult";
 
 const FilePreview = ({ file }: { file: File | null }) => {
     const [preview, setPreview] = useState<string | null>(null);
@@ -116,18 +117,9 @@ const Dashboard = () => {
     };
 
     const handleAnalyzeResume = async () => {
-        try {
-            const response = await axios.get("http://localhost:8000/analyze-resume/");
-
-            if (response.status === 200) {
-                setAnalysisResult(JSON.parse(response.data));
-            } else {
-                alert("Analysis failed.");
-            }
-        } catch (error) {
-            console.error("Error during resume analysis:", error);
-            alert("An error occurred while analyzing the resume.");
-        }
+        const response = await fetch('http://localhost:8000/analyze-resume');
+        const data = await response.json();
+        setAnalysisResult(data);
     };
 
     return (
@@ -135,7 +127,7 @@ const Dashboard = () => {
             <div className="flex justify-between shadow-md dark:shadow-gray-800 h-12">
                 <div>
                     <Image
-                        src={theme === "dark" ? "/images/logo_dark.png" : "/images/logo_light.png"}
+                        src={"/images/logo.svg"}
                         alt="logo"
                         width={100}
                         height={30}
@@ -176,30 +168,10 @@ const Dashboard = () => {
                             </Button>
                         </form>
                     </div>
-                    <div className="flex justify-center">
-                        <Button onClick={handleAnalyzeResume} className="mt-4">
-                            Analyze Resume
-                        </Button>
-                    </div>
-
-                    {analysisResult && (
-                        <div className="mt-4 w-full">
-                            <Card className="w-full mx-auto shadow-lg">
-                                <CardHeader>
-                                    <CardTitle>Analysis Result</CardTitle>
-                                    <CardDescription>Details from the uploaded resume</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <p><strong>Predicted Job:</strong> {analysisResult.predicted_job}</p>
-                                    <p className="mt-4"><strong>Current Skills:</strong> {analysisResult.skills}</p>
-                                    <p className="mt-4"><strong>Skills Required:</strong> {analysisResult.skills_required.join(", ")}</p>
-                                </CardContent>
-                                <CardFooter>
-                                    <p className="text-sm text-gray-500">Analysis completed successfully.</p>
-                                </CardFooter>
-                            </Card>
-                        </div>
-                    )}
+                    <ResumeAnalysisResult
+                        analysisResult={analysisResult}
+                        handleAnalyzeResume={handleAnalyzeResume}
+                    />
                 </div>
             </div>
         </>
