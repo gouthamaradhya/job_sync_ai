@@ -8,15 +8,15 @@ import Card from "@/components/Card";
 const Page = () => {
   return (
     <>
-      <nav className="flex justify-between shadow-md opacity-90 fixed top-0 left-0 right-0 z-10 bg-white">
+      <nav className="flex justify-between shadow-md opacity-90 fixed top-0 left-0 right-0 z-10 bg-[#9CAFB7]">
         <div className="flex gap-2 items-center">
           <Image src="/images/logo.svg" alt="Job Sync AI Logo" width={50} height={50} className="m-2" />
-          <h2 className="font-bold text-xl text-logo">Job Sync AI</h2>
+          <h2 className="font-bold text-xl text-[#273043]">Job Sync AI</h2>
         </div>
         <ul className="flex gap-4 p-2">
           <li>
             <RegisterLink>
-              <Button className="bg-white text-secondary border hover:bg-tertiary border-secondary">
+              <Button className="bg-white text-[#F26430] border hover:bg-tertiary border-[#F26430] ">
                 Sign up
               </Button>
             </RegisterLink>
@@ -24,7 +24,7 @@ const Page = () => {
 
           <li>
             <LoginLink postLoginRedirectURL="/dashboard">
-              <Button className="bg-secondary hover:bg-secondary-dark">
+              <Button className="bg-[#F26430]">
                 Log In
               </Button>
             </LoginLink>

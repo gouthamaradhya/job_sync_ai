@@ -124,16 +124,10 @@ const Dashboard = () => {
 
     return (
         <>
-            <div className="flex justify-between shadow-md dark:shadow-gray-800 h-12">
-                <div>
-                    <Image
-                        src={"/images/logo.svg"}
-                        alt="logo"
-                        width={100}
-                        height={30}
-                        style={{ objectFit: "fill", width: "100px", height: "30px" }}
-                        className="mt-2 ml-2"
-                    />
+            <div className="flex justify-between shadow-md bg-[#9CAFB7] dark:shadow-gray-800 h-auto">
+                <div className="flex gap-2 items-center">
+                    <Image src="/images/logo.svg" alt="Job Sync AI Logo" width={50} height={50} className="m-2" />
+                    <h2 className="font-bold text-xl text-logo">Job Sync AI</h2>
                 </div>
                 <div className="flex gap-5">
 

@@ -18,7 +18,7 @@ interface Props {
 const Card: React.FC<Props> = ({ title, main_image, image1, image2, image3, point1, point2, point3, button }) => {
     return (
         <>
-            <div className="md:w-1/3 w-5/6 mx-auto md:mx-0 rounded-lg shadow-xl overflow-hidden border border-black mt-5">
+            <div className="md:w-1/3 w-5/6 mx-auto md:mx-0 rounded-lg shadow-xl overflow-hidden border border-gray-200 mt-5">
                 <h1 className="text-2xl text-center font-bold text-primary">{title}</h1>
                 <div className="flex justify-center mt-5">
                     <img src={main_image} alt="main image" className=" w-5/6 h-60" />                </div>
