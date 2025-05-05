@@ -784,7 +784,7 @@ const FilePreview = ({ file })=>{
 };
 _s(FilePreview, "5VuVSw1eIzgkSAd6QdkZxlxr5iE=");
 _c = FilePreview;
-const Dashboard = ()=>{
+const dashboard = ()=>{
     _s1();
     const { toast } = (0, __TURBOPACK__imported__module__$5b$project$5d2f$hooks$2f$use$2d$toast$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useToast"])();
     const { theme, setTheme } = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2d$themes$2f$dist$2f$index$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useTheme"])();
@@ -792,11 +792,11 @@ const Dashboard = ()=>{
     const [analysisResult, setAnalysisResult] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
     const [mounted, setMounted] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
-        "Dashboard.useEffect": ()=>{
+        "dashboard.useEffect": ()=>{
             setMounted(true);
             setAnalysisResult(null);
         }
-    }["Dashboard.useEffect"], [
+    }["dashboard.useEffect"], [
         selectedFile
     ]);
     if (!mounted) return null; // Prevents hydration mismatch
@@ -861,7 +861,7 @@ const Dashboard = ()=>{
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
         children: [
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                className: "flex justify-between shadow-md dark:shadow-gray-800 h-auto",
+                className: "flex justify-between shadow-md bg-[#9CAFB7] dark:shadow-gray-800 h-auto",
                 children: [
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "flex gap-2 items-center",
@@ -1025,17 +1025,15 @@ const Dashboard = ()=>{
         ]
     }, void 0, true);
 };
-_s1(Dashboard, "/w2G6sObMVEUGTuuKHuB/QcGH3k=", false, function() {
+_s1(dashboard, "/w2G6sObMVEUGTuuKHuB/QcGH3k=", false, function() {
     return [
         __TURBOPACK__imported__module__$5b$project$5d2f$hooks$2f$use$2d$toast$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useToast"],
         __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2d$themes$2f$dist$2f$index$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useTheme"]
     ];
 });
-_c1 = Dashboard;
-const __TURBOPACK__default__export__ = Dashboard;
-var _c, _c1;
+const __TURBOPACK__default__export__ = dashboard;
+var _c;
 __turbopack_refresh__.register(_c, "FilePreview");
-__turbopack_refresh__.register(_c1, "Dashboard");
 if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
     __turbopack_refresh__.registerExports(module, globalThis.$RefreshHelpers$);
 }

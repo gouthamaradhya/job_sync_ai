@@ -4,33 +4,29 @@ import pytesseract
 from pdf2image import convert_from_path
 from PIL import Image
 from PyPDF2 import PdfReader
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.core.files.storage import FileSystemStorage
 from .models import Resume
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from myapp.models import Resume  # Replace `myapp` with your actual app name
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
 from groq import Groq  # Ensure `groq` is installed and imported
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from huggingface_hub import InferenceClient
-from .models import Resume  # Assuming you have a Resume model
-from django.http import HttpResponse
 from supabase import create_client, Client
-import os
-from dotenv import load_dotenv
-from django.http import JsonResponse
 import numpy as np
 import requests
+from dotenv import load_dotenv
 
 load_dotenv() 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-
-
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def get_supabase_client():
+    """Helper function to get Supabase client"""
+    return supabase
 
 @csrf_exempt
 def upload_resume(request):
@@ -234,3 +230,62 @@ def analyze_resume(request):
     # Return error for invalid request methods
     print("❌ Invalid request method. Only GET is allowed.")
     return JsonResponse({"error": "Invalid request method. Only GET is allowed."}, status=405)
+
+@api_view(['GET'])
+def get_jobs_by_domain(request):
+    """
+    API endpoint to fetch jobs by domain from Supabase
+    
+    Query parameters:
+    - domain: The domain category to filter jobs by
+    """
+    domain = request.GET.get('domain', None)
+    
+    if not domain:
+        return Response({"error": "Domain parameter is required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Use the helper function
+        supabase = get_supabase_client()
+        
+        # Fetch jobs from Supabase that match the specified domain
+        response = supabase.table("job_description").select("*").eq("domain", domain).execute()
+        
+        # Check if we got data back
+        if hasattr(response, 'data') and response.data:
+            return Response(response.data)
+        else:
+            return Response([], status=status.HTTP_200_OK)  # Return empty list if no jobs found
+            
+    except Exception as e:
+        print(f"Error fetching jobs from Supabase: {str(e)}")
+        return Response(
+            {"error": "Failed to fetch jobs. Please try again later."}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['GET'])
+def get_all_domains(request):
+    """
+    API endpoint to fetch all available job domains
+    """
+    try:
+        # Use the helper function
+        supabase = get_supabase_client()
+        
+        # Query to get unique domains
+        response = supabase.table("job_description").select("domain").execute()
+        
+        if hasattr(response, 'data') and response.data:
+            # Extract unique domains
+            domains = list(set([item['domain'] for item in response.data if item.get('domain')]))
+            return Response(domains)
+        else:
+            return Response([], status=status.HTTP_200_OK)
+            
+    except Exception as e:
+        print(f"Error fetching domains from Supabase: {str(e)}")
+        return Response(
+            {"error": "Failed to fetch domains. Please try again later."}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

@@ -27,6 +27,8 @@ import {
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import ResumeAnalysisResult from "@/components/AnalysisResult";
+import DomainSearch from "@/components/DomainSearch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const FilePreview = ({ file }: { file: File | null }) => {
     const [preview, setPreview] = useState<string | null>(null);
@@ -58,7 +60,7 @@ const FilePreview = ({ file }: { file: File | null }) => {
     );
 };
 
-const Dashboard = () => {
+const dashboard = () => {
     const { toast } = useToast();
     const { theme, setTheme } = useTheme();
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -147,29 +149,42 @@ const Dashboard = () => {
 
             <div className="flex justify-center mt-20">
                 <div className="w-3/4">
-                    <div className="p-6 text-center border border-dashed dark:border-gray-500 light:border-gray-200">
-                        <h1 className="text-2xl font-bold mb-4">Upload Your File</h1>
-                        <form onSubmit={handleSubmit} className="flex flex-col items-center gap-4">
-                            <Input
-                                type="file"
-                                accept="image/*,application/pdf"
-                                onChange={handleFileChange}
-                                className="border p-2 w-1/3"
+                    <Tabs defaultValue="resume" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="resume">Resume Analysis</TabsTrigger>
+                            <TabsTrigger value="domain">Domain Search</TabsTrigger>
+                        </TabsList>
+                        
+                        <TabsContent value="resume">
+                            <div className="p-6 text-center border border-dashed dark:border-gray-500 light:border-gray-200">
+                                <h1 className="text-2xl font-bold mb-4">Upload Your Resume</h1>
+                                <form onSubmit={handleSubmit} className="flex flex-col items-center gap-4">
+                                    <Input
+                                        type="file"
+                                        accept="image/*,application/pdf"
+                                        onChange={handleFileChange}
+                                        className="border p-2 w-1/3"
+                                    />
+                                    {selectedFile && <FilePreview file={selectedFile} />}
+                                    <Button type="submit" disabled={!selectedFile} className="mt-4">
+                                        Upload
+                                    </Button>
+                                </form>
+                            </div>
+                            <ResumeAnalysisResult
+                                analysisResult={analysisResult}
+                                handleAnalyzeResume={handleAnalyzeResume}
                             />
-                            {selectedFile && <FilePreview file={selectedFile} />}
-                            <Button type="submit" disabled={!selectedFile} className="mt-4">
-                                Upload
-                            </Button>
-                        </form>
-                    </div>
-                    <ResumeAnalysisResult
-                        analysisResult={analysisResult}
-                        handleAnalyzeResume={handleAnalyzeResume}
-                    />
+                        </TabsContent>
+                        
+                        <TabsContent value="domain">
+                            <DomainSearch />
+                        </TabsContent>
+                    </Tabs>
                 </div>
             </div>
         </>
     );
 };
 
-export default Dashboard;
+export default dashboard;
