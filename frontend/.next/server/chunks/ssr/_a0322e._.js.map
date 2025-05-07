@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 7, "column": 0}, "map": {"version":3,"sources":["file://C%3A/Users/Damachandra/Desktop/code_playground/job_sync_ai/frontend/components/ui/card.tsx"],"sourcesContent":["// components/ui/label.tsx\r\n\"use client\"\r\n\r\nimport * as React from \"react\"\r\nimport * as LabelPrimitive from \"@radix-ui/react-label\"\r\nimport { cva, type VariantProps } from \"class-variance-authority\"\r\n\r\nimport { cn } from \"@/lib/utils\"\r\n\r\nconst labelVariants = cva(\r\n  \"text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70\"\r\n)\r\n\r\nconst Label = React.forwardRef<\r\n  React.ElementRef<typeof LabelPrimitive.Root>,\r\n  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> &\r\n    VariantProps<typeof labelVariants>\r\n>(({ className, ...props }, ref) => (\r\n  <LabelPrimitive.Root\r\n    ref={ref}\r\n    className={cn(labelVariants(), className)}\r\n    {...props}\r\n  />\r\n))\r\nLabel.displayName = LabelPrimitive.Root.displayName\r\n\r\nexport { Label }"],"names":[],"mappings":"AAAA,0BAA0B;;;;;AAG1B;AAEA;AAEA;AAHA;AAHA;;;;;;AAQA,MAAM,gBAAgB,CAAA,GAAA,gKAAA,CAAA,MAAG,AAAD,EACtB;AAGF,MAAM,sBAAQ,sMAAM,UAAU,CAI5B,CAAC,EAAE,SAAS,EAAE,GAAG,OAAO,EAAE,oBAC1B,8OAAC,kKAAe,IAAI;QAClB,KAAK;QACL,WAAW,CAAA,GAAA,4GAAA,CAAA,KAAE,AAAD,EAAE,iBAAiB;QAC9B,GAAG,KAAK;;;;;;AAGb,MAAM,WAAW,GAAG,kKAAe,IAAI,CAAC,WAAW"}},
+    {"offset": {"line": 34, "column": 0}, "map": {"version":3,"sources":[],"names":[],"mappings":"A"}}]
+}

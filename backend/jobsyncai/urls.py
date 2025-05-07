@@ -10,12 +10,12 @@ urlpatterns = [
     path('analyze-resume/', views.analyze_resume, name='analyze_resume'),
     path('api/jobs/domain/', views.get_jobs_by_domain, name='jobs_by_domain'),
     path('api/domains/', views.get_all_domains, name='get_all_domains'),
-
+    
+    # New recruiter endpoints
+    path('api/upload-job/', views.upload_job_posting, name='upload_job_posting'),
+    path('api/search-candidates/', views.match_candidates_for_job, name='match_candidates_for_job'),
 ]
 
 # Serve media files in development (for local testing)
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-
-
-

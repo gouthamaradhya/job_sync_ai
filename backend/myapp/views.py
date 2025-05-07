@@ -1,3 +1,6 @@
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import api_view
+
 from django.shortcuts import render
 import os
 import pytesseract
@@ -7,16 +10,20 @@ from PyPDF2 import PdfReader
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.core.files.storage import FileSystemStorage
-from .models import Resume
+from .models import Resume, JobPosting
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from groq import Groq  # Ensure `groq` is installed and imported
-from huggingface_hub import InferenceClient
+import json
 from supabase import create_client, Client
 import numpy as np
 import requests
 from dotenv import load_dotenv
+from sentence_transformers import SentenceTransformer
+
+# Initialize the model once at module level
+model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
 load_dotenv() 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -74,6 +81,23 @@ def upload_resume(request):
             
             # Save the extracted text in the database
             resume = Resume.objects.create(name=uploaded_file.name, text=text)
+            
+            # Generate and store resume embedding in Supabase
+            try:
+                # Generate embedding using the local model
+                vector = model.encode(text).tolist()
+                
+                # Store in Supabase resume_vectors table
+                supabase_client = get_supabase_client()
+                supabase_client.table("resume_vectors").insert({
+                    "id": resume.id,
+                    "name": uploaded_file.name,
+                    "text": text,
+                    "embedding": vector
+                }).execute()
+            except Exception as e:
+                print(f"Warning: Failed to store resume vector in Supabase: {e}")
+            
             resume.save()
             
             return JsonResponse({"message": "Resume uploaded successfully", "resume_id": resume.id}, status=201)
@@ -115,16 +139,6 @@ def analyze_resume(request):
     if request.method == "GET":
         print("✅ Received GET request for analyzing resume.")
 
-        # Initialize the Hugging Face Inference Client
-        try:
-            # Store API keys in environment variables or settings, not in code
-            hf_api_key = os.getenv("HUGGING_FACE_API_KEY")
-            client = InferenceClient(api_key=hf_api_key)
-            print("✅ Hugging Face Inference Client initialized.")
-        except Exception as e:
-            print(f"❌ Error initializing Hugging Face client: {e}")
-            return JsonResponse({"error": f"Failed to initialize Hugging Face Client: {str(e)}"}, status=500)
-
         # Retrieve the most recent resume data from SQLite
         try:
             resume_instance = Resume.objects.last()
@@ -139,29 +153,24 @@ def analyze_resume(request):
             print(f"❌ Error fetching resume from the database: {e}")
             return JsonResponse({"error": str(e)}, status=500)
 
-        # Perform embedding using the HF Inference API
+        # Perform embedding using the local model
         try:
-            print("🔄 Sending resume for embedding...")
-            vector = client.feature_extraction(
-                user_resume,
-                model="sentence-transformers/all-MiniLM-L6-v2"
-            )
+            print("🔄 Generating resume embedding locally...")
+            # Use the model imported at the top of the file
+            vector = model.encode(user_resume).tolist()
 
             if vector is not None and len(vector) > 0:
-                vector_list = vector.tolist() if isinstance(vector, np.ndarray) else vector
-
                 print(f"✅ Vector generated successfully: Length - {len(vector)}")
 
                 # Match filtered jobs using the generated vector
                 print("🔄 Matching filtered jobs...")
-                result = match_filtered_jobs(vector_list)
-                print(result)
+                result = match_filtered_jobs(vector)
                 
                 # Process result
-                if hasattr(result, 'data'):
-                    matched_jobs = result.data
-                else:
-                    matched_jobs = result
+                if isinstance(result, dict) and "error" in result:
+                    return JsonResponse(result, status=500)
+                
+                matched_jobs = result
                 
                 # New functionality: Analyze resume and matched jobs with Groq
                 try:
@@ -220,8 +229,8 @@ def analyze_resume(request):
                         "job_analysis_error": str(e)
                     }, status=200)
             else:
-                print("❌ Empty or invalid vector response from Hugging Face API.")
-                return JsonResponse({"error": "Invalid response format from Hugging Face API"}, status=500)
+                print("❌ Empty or invalid vector response.")
+                return JsonResponse({"error": "Failed to generate embedding vector"}, status=500)
 
         except Exception as e:
             print(f"❌ Error in processing: {e}")
@@ -289,3 +298,163 @@ def get_all_domains(request):
             {"error": "Failed to fetch domains. Please try again later."}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+@csrf_exempt
+def upload_job_posting(request):
+    """
+    API endpoint to upload and store job postings
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid request method"}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        
+        # Extract job posting data
+        title = data.get('title')
+        company = data.get('company')
+        description = data.get('description')
+        requirements = data.get('requirements', '')
+        location = data.get('location', '')
+        domain = data.get('domain')
+        
+        # Validate required fields
+        if not all([title, company, description, domain]):
+            return JsonResponse({"error": "Missing required fields"}, status=400)
+        
+        # Create and save the job posting in the local database
+        job_posting = JobPosting.objects.create(
+            title=title,
+            company=company,
+            description=description,
+            requirements=requirements,
+            location=location,
+            domain=domain
+        )
+
+        # Generate vector embedding locally using sentence-transformers
+        try:
+            combined_text = f"{title} {company} {description} {requirements}"
+            vector = model.encode(combined_text).tolist()
+            
+            # Insert into Supabase
+            supabase = get_supabase_client()
+            response = supabase.table("job_description").insert({
+                "id": str(job_posting.id),
+                "title": title,
+                "company": company,
+                "description": description,
+                "requirements": requirements,
+                "location": location,
+                "domain": domain,
+                "embedding": vector
+            }).execute()
+
+            if hasattr(response, 'error') and response.error:
+                return JsonResponse({"error": f"Supabase insertion error: {response.error}"}, status=500)
+            
+            return JsonResponse({"message": "Job posting uploaded successfully", "job_id": job_posting.id}, status=201)
+
+        except Exception as e:
+            return JsonResponse({"error": f"Embedding or Supabase error: {str(e)}"}, status=500)
+
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON format"}, status=400)
+    except Exception as e:
+        return JsonResponse({"error": f"Server error: {str(e)}"}, status=500)
+
+@api_view(['POST'])
+def match_candidates_for_job(request):
+    """
+    API endpoint to find the best candidates for a job description
+    """
+    if request.method != "POST":
+        return Response({"error": "Invalid request method"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    
+    try:
+        data = request.data
+        job_description = data.get('job_description')
+        
+        if not job_description:
+            return Response({"error": "Job description is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Generate embedding locally
+        vector = model.encode(job_description).tolist()
+        
+        # Match candidates using a Supabase function
+        match_threshold = 0.2
+        match_count = 10
+        
+        # Call Supabase function to match candidates
+        supabase = get_supabase_client()
+        response = supabase.rpc(
+            "match_candidates", 
+            {
+                "query_embedding": vector,
+                "match_threshold": match_threshold,
+                "match_count": match_count
+            }
+        ).execute()
+        
+        if not response or not hasattr(response, 'data'):
+            return Response({"error": "Invalid response from Supabase"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        matched_candidates = response.data
+        
+        # Use Groq to analyze the matches
+        try:
+            groq_api_key = os.getenv("GROQ_API_KEY")
+            
+            # Prepare candidate data for the prompt
+            candidates_text = ""
+            for i, candidate in enumerate(matched_candidates, 1):
+                candidates_text += f"Candidate {i}: {candidate.get('name', 'Unknown')}\n"
+                candidates_text += f"Resume: {candidate.get('text', 'No resume available')[:500]}...\n\n"
+            
+            # Create prompt for Groq
+            prompt = f"""
+            Given the following job description and matched candidate resumes, please:
+            1. Rank the candidates from best to worst match for the position
+            2. Explain why each candidate is suited for the role
+            3. Identify any missing skills or experience for each candidate
+            
+            JOB DESCRIPTION:
+            {job_description}
+            
+            MATCHED CANDIDATES:
+            {candidates_text}
+            """
+            
+            # Make request to Groq
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {groq_api_key}"
+                },
+                json={
+                    "model": "gemma2-9b-it",
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+            )
+            
+            groq_data = response.json()
+            analysis = groq_data.get("choices", [{}])[0].get("message", {}).get("content", "Analysis unavailable")
+            
+            # Return both matched candidates and the analysis
+            return Response({
+                "matched_candidates": matched_candidates,
+                "candidate_analysis": analysis
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"Error in Groq analysis: {e}")
+            # Continue even if Groq analysis fails, just return matched candidates
+            return Response({
+                "matched_candidates": matched_candidates,
+                "candidate_analysis_error": str(e)
+            }, status=status.HTTP_200_OK)
+            
+    except Exception as e:
+        print(f"Error matching candidates: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
