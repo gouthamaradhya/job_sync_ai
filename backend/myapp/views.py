@@ -10,7 +10,7 @@ from PyPDF2 import PdfReader
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.core.files.storage import FileSystemStorage
-from .models import Resume, JobPosting
+from .models import Resume
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
@@ -21,7 +21,8 @@ import numpy as np
 import requests
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
-from .models import JobDescription  # Import JobDescription
+from .models import JobDescription, JobRecruiter
+from .serializers import JobDescriptionSerializer, DomainSerializer
 
 
 # Initialize the model once at module level
@@ -301,69 +302,6 @@ def get_all_domains(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-@csrf_exempt
-def upload_job_posting(request):
-    """
-    API endpoint to upload and store job postings
-    """
-    if request.method != "POST":
-        return JsonResponse({"error": "Invalid request method"}, status=405)
-    
-    try:
-        data = json.loads(request.body)
-        
-        # Extract job posting data
-        title = data.get('title')
-        company = data.get('company')
-        description = data.get('description')
-        requirements = data.get('requirements', '')
-        location = data.get('location', '')
-        domain = data.get('domain')
-        
-        # Validate required fields
-        if not all([title, company, description, domain]):
-            return JsonResponse({"error": "Missing required fields"}, status=400)
-        
-        # Create and save the job posting in the local database
-        job_posting = JobPosting.objects.create(
-            title=title,
-            company=company,
-            description=description,
-            requirements=requirements,
-            location=location,
-            domain=domain
-        )
-
-        # Generate vector embedding locally using sentence-transformers
-        try:
-            combined_text = f"{title} {company} {description} {requirements}"
-            vector = model.encode(combined_text).tolist()
-            
-            # Insert into Supabase
-            supabase = get_supabase_client()
-            response = supabase.table("job_description").insert({
-                "id": str(job_posting.id),
-                "title": title,
-                "company": company,
-                "description": description,
-                "requirements": requirements,
-                "location": location,
-                "domain": domain,
-                "embedding": vector
-            }).execute()
-
-            if hasattr(response, 'error') and response.error:
-                return JsonResponse({"error": f"Supabase insertion error: {response.error}"}, status=500)
-            
-            return JsonResponse({"message": "Job posting uploaded successfully", "job_id": job_posting.id}, status=201)
-
-        except Exception as e:
-            return JsonResponse({"error": f"Embedding or Supabase error: {str(e)}"}, status=500)
-
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON format"}, status=400)
-    except Exception as e:
-        return JsonResponse({"error": f"Server error: {str(e)}"}, status=500)
 
 @api_view(['POST'])
 def match_candidates_for_job(request):
@@ -461,72 +399,174 @@ def match_candidates_for_job(request):
         print(f"Error matching candidates: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-@csrf_exempt
+
+def insert_job_to_supabase(job_data):
+    """
+    Insert job data into Supabase job_description table
+    """
+    client = get_supabase_client()
+    
+    # Insert into job_description table
+    result = client.table('job_description').insert({
+        'id': str(job_data['id']),
+        'uuid': str(job_data['uuid']),
+        'domain': job_data['domain'],
+        'description': job_data['description'],
+        'salary': float(job_data['salary']),
+        'contact_info': job_data['contact_info'],
+        'recruiter_id': str(job_data['recruiter_id']),
+        'application_link': job_data['application_link']
+    }).execute()
+    
+    return result
+
+def insert_vector_to_supabase(vector_data):
+    """
+    Insert vector data into Supabase vector_table
+    """
+    client = get_supabase_client()
+    
+    # Insert into vector_table
+    result = client.table('vector_table').insert({
+        'id': str(vector_data['id']),
+        'job_id': str(vector_data['job_id']),
+        'embedding': vector_data['embedding']
+    }).execute()
+    
+    return result
+
+@api_view(['GET'])
+def get_domains(request):
+    """API endpoint to get available job domains"""
+    # For demonstration, hard-coded domains
+    # In a real app, you might fetch these from a database
+    domains = [
+        "Software Development",
+        "Data Science",
+        "DevOps",
+        "Product Management",
+        "UX/UI Design",
+        "Marketing",
+        "Sales",
+        "Customer Support",
+        "Human Resources",
+        "Finance"
+    ]
+    return Response(domains)
+
+@api_view(['POST'])
 def upload_job_posting(request):
     """
-    API endpoint to upload and store job postings in the job_description table
+    API endpoint to receive job postings from the NextJS frontend and store them in Supabase
     """
-    if request.method != "POST":
-        return JsonResponse({"error": "Invalid request method"}, status=405)
-
     try:
-        data = json.loads(request.body)
-
-        # Extract job posting data based on the JobDescription model
+        data = request.data
+        
+        # Extract job posting data
         title = data.get('title')
-        description = data.get('description')
         company = data.get('company')
+        description = data.get('description')
+        requirements = data.get('requirements', '')
         location = data.get('location', '')
         domain = data.get('domain')
-        salary_range = data.get('salary_range', '')
-        experience_level = data.get('experience_level', '')
-        application_link = data.get('application_link', '')
-
+        
+        # Debug information
+        print(f"Received data: title={title}, company={company}, domain={domain}")
+        
         # Validate required fields
-        if not all([title, description, company, domain]):
-            return JsonResponse({"error": "Missing required fields"}, status=400)
-
-        # Create and save the job description in the local database
-        job_description = JobDescription.objects.create(
-            title=title,
-            description=description,
-            company=company,
-            location=location,
-            domain=domain,
-            salary_range=salary_range,
-            experience_level=experience_level,
-            application_link=application_link
-        )
-
-        # Generate vector embedding locally using sentence-transformers
+        if not all([title, company, description, domain]):
+            return Response({"error": "Missing required fields"}, status=status.HTTP_400_BAD_REQUEST)
+        
         try:
-            combined_text = f"{title} {company} {description} {domain}"
-            vector = model.encode(combined_text).tolist()
-
-            # Insert into Supabase
-            supabase_client = get_supabase_client()
-            response = supabase_client.table("job_description").insert({
-                "id": str(job_description.id),
-                "title": title,
-                "description": description,
-                "company": company,
-                "location": location,
-                "domain": domain,
-                "salary_range": salary_range,
-                "experience_level": experience_level,
-                "application_link": application_link,
-                "embedding": vector
-            }).execute()
-
-            if hasattr(response, 'error') and response.error:
-                return JsonResponse({"error": f"Supabase insertion error: {response.error}"}, status=500)
-
-            return JsonResponse({"message": "Job posting uploaded successfully", "job_id": job_description.id}, status=201)
-
-        except Exception as e:
-            return JsonResponse({"error": f"Embedding or Supabase error: {str(e)}"}, status=500)
-
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON format"}, status=400)
+            # Create and save the job description in the local database
+            job_description = JobDescription.objects.create(
+                title=title,
+                description=description,
+                company=company,
+                location=location,
+                domain=domain
+            )
+            
+            # For debugging - to ensure we're correctly creating the Django model
+            print(f"Created JobDescription with ID: {job_description.id}")
+            
+            try:
+                # Generate vector embedding using sentence-transformers
+                # Import model inside try/except to handle potential import errors gracefully
+                from sentence_transformers import SentenceTransformer
+                model = SentenceTransformer('all-MiniLM-L6-v2')
+                
+                combined_text = f"{title} {company} {description} {requirements}"
+                vector = model.encode(combined_text).tolist()
+                
+                try:
+                    # Import supabase client inside try/except to handle potential import errors
+                    from .supabase_client import get_supabase_client
+                    supabase_client = get_supabase_client()
+                    
+                    # Insert into Supabase job_description table
+                    job_response = supabase_client.table("job_description").insert({
+                        "id": str(job_description.id),  # Use Django model ID as Supabase ID
+                        "uuid": str(job_description.id),  # Using the same ID for uuid field
+                        "domain": domain,
+                        "description": description,
+                        "salary": 0,  # Default value as per schema
+                        "contact_info": company,  # Using company as contact info
+                        "recruiter_id": "00000000-0000-0000-0000-000000000000",  # Default UUID
+                        "application_link": ""  # Empty application link
+                    }).execute()
+                    
+                    # Insert vector embedding into vector_table
+                    vector_response = supabase_client.table("vector_table").insert({
+                        "id": str(uuid.uuid4()),  # Generate new UUID for vector table
+                        "job_id": str(job_description.id),  # Reference to job description
+                        "embedding": vector  # The embedding vector
+                    }).execute()
+                    
+                    print("Successfully inserted data into Supabase")
+                    
+                except Exception as supabase_error:
+                    # Handle Supabase integration errors
+                    print(f"Supabase error: {str(supabase_error)}")
+                    # If Supabase fails but Django DB succeeded, we still return success
+                    # but include a warning
+                    return Response({
+                        "status": "partial_success", 
+                        "message": "Job posting created in local database but Supabase integration failed",
+                        "job_id": job_description.id,
+                        "warning": str(supabase_error)
+                    }, status=status.HTTP_201_CREATED)
+                
+            except ImportError as import_error:
+                # Handle missing sentence-transformers package
+                print(f"Import error: {str(import_error)}")
+                return Response({
+                    "status": "partial_success", 
+                    "message": "Job posting created but vector embedding failed",
+                    "job_id": job_description.id,
+                    "error_detail": str(import_error)
+                }, status=status.HTTP_201_CREATED)
+            
+            return Response({
+                "status": "success", 
+                "message": "Job posting created successfully",
+                "job_id": job_description.id
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as db_error:
+            # Database-specific errors
+            print(f"Database error: {str(db_error)}")
+            return Response({
+                "status": "error", 
+                "message": "Database error",
+                "error_detail": str(db_error)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
     except Exception as e:
-        return JsonResponse({"error": f"Server error: {str(e)}"}, status=500)
+        # Catch-all for any other errors
+        print(f"General error: {str(e)}")
+        return Response({
+            "status": "error", 
+            "message": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

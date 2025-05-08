@@ -77,57 +77,452 @@ __turbopack_esm__({
 });
 var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_import__("[project]/node_modules/next/dist/compiled/react/jsx-dev-runtime.js [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_import__("[project]/node_modules/next/dist/compiled/react/index.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$build$2f$polyfills$2f$process$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_import__("[project]/node_modules/next/dist/build/polyfills/process.js [app-client] (ecmascript)");
 ;
 var _s = __turbopack_refresh__.signature();
 'use client';
 ;
 function UploadJobPosting() {
     _s();
-    const [file, setFile] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
-    const handleUpload = ()=>{
-        if (!file) return;
-        // TODO: Add actual file upload API logic
-        console.log('Uploading file:', file.name);
+    const [formData, setFormData] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])({
+        title: '',
+        company: '',
+        description: '',
+        requirements: '',
+        location: '',
+        domain: ''
+    });
+    const [loading, setLoading] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
+    const [error, setError] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [success, setSuccess] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
+    const [debugInfo, setDebugInfo] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const handleChange = (e)=>{
+        const { name, value } = e.target;
+        setFormData((prev)=>({
+                ...prev,
+                [name]: value
+            }));
+    };
+    const handleSubmit = async (e)=>{
+        e.preventDefault();
+        setLoading(true);
+        setError(null);
+        setSuccess(false);
+        setDebugInfo(null);
+        try {
+            // Check required fields
+            if (!formData.title || !formData.company || !formData.description || !formData.domain) {
+                throw new Error('Please fill in all required fields');
+            }
+            // Make a direct request to the Django backend
+            // Replace with your actual Django backend URL
+            const DJANGO_API_URL = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$build$2f$polyfills$2f$process$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"].env.NEXT_PUBLIC_DJANGO_API_URL || 'http://localhost:8000';
+            const endpoint = `${DJANGO_API_URL}/api/upload-job-posting/`;
+            console.log('Sending request to:', endpoint);
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    // Ensure CORS is properly handled
+                    'Accept': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify(formData)
+            });
+            // Log response details for debugging
+            console.log('Response status:', response.status);
+            console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+            // Check content type to handle non-JSON responses
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || data.message || 'Failed to upload job posting');
+                }
+                console.log('Job posting created:', data);
+                setSuccess(true);
+                // Reset form
+                setFormData({
+                    title: '',
+                    company: '',
+                    description: '',
+                    requirements: '',
+                    location: '',
+                    domain: ''
+                });
+            } else {
+                // Handle HTML or other non-JSON responses
+                const text = await response.text();
+                console.error('Received non-JSON response:', text.substring(0, 200));
+                setDebugInfo(`Received non-JSON response. First 100 characters: ${text.substring(0, 100)}`);
+                throw new Error('Server returned an invalid response format. Expected JSON.');
+            }
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
+            console.error('Error submitting form:', errorMessage);
+            setError(errorMessage);
+        } finally{
+            setLoading(false);
+        }
     };
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
-        className: "border border-gray-200 rounded-md mt-12 max-w-3xl mx-auto p-10 flex flex-col items-center",
+        className: "border border-gray-200 rounded-md mt-12 max-w-3xl mx-auto p-10",
         children: [
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
                 className: "text-xl font-bold mb-6 text-center",
                 children: "Upload Your Job Posting"
             }, void 0, false, {
                 fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
-                lineNumber: 15,
+                lineNumber: 101,
                 columnNumber: 7
             }, this),
-            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
-                type: "file",
-                accept: ".txt,.pdf,.doc,.docx",
-                onChange: (e)=>setFile(e.target.files?.[0] || null),
-                className: "border border-gray-200 rounded-md px-4 py-2 w-80 cursor-pointer"
+            success && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "mb-6 p-3 bg-green-100 text-green-700 rounded-md",
+                children: "Job posting uploaded successfully!"
             }, void 0, false, {
                 fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
-                lineNumber: 16,
-                columnNumber: 7
+                lineNumber: 104,
+                columnNumber: 9
             }, this),
-            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
-                onClick: handleUpload,
-                className: `mt-6 bg-gray-600 text-white font-semibold rounded-md px-6 py-3 ${file ? '' : 'cursor-not-allowed opacity-50'}`,
-                disabled: !file,
-                children: "Upload"
-            }, void 0, false, {
+            error && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "mb-6 p-3 bg-red-100 text-red-700 rounded-md",
+                children: [
+                    "Error: ",
+                    error
+                ]
+            }, void 0, true, {
                 fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
-                lineNumber: 22,
+                lineNumber: 110,
+                columnNumber: 9
+            }, this),
+            debugInfo && ("TURBOPACK compile-time value", "development") !== 'production' && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "mb-6 p-3 bg-yellow-100 text-yellow-800 rounded-md text-sm font-mono overflow-x-auto",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                        className: "font-bold",
+                        children: "Debug Info:"
+                    }, void 0, false, {
+                        fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                        lineNumber: 117,
+                        columnNumber: 11
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                        children: debugInfo
+                    }, void 0, false, {
+                        fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                        lineNumber: 118,
+                        columnNumber: 11
+                    }, this)
+                ]
+            }, void 0, true, {
+                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                lineNumber: 116,
+                columnNumber: 9
+            }, this),
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("form", {
+                onSubmit: handleSubmit,
+                className: "space-y-6",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "grid grid-cols-1 md:grid-cols-2 gap-6",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "flex flex-col",
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
+                                        htmlFor: "title",
+                                        className: "mb-1 font-medium",
+                                        children: "Job Title *"
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                        lineNumber: 125,
+                                        columnNumber: 13
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
+                                        id: "title",
+                                        name: "title",
+                                        type: "text",
+                                        value: formData.title,
+                                        onChange: handleChange,
+                                        required: true,
+                                        className: "border border-gray-200 rounded-md px-4 py-2"
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                        lineNumber: 128,
+                                        columnNumber: 13
+                                    }, this)
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                lineNumber: 124,
+                                columnNumber: 11
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "flex flex-col",
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
+                                        htmlFor: "company",
+                                        className: "mb-1 font-medium",
+                                        children: "Company Name *"
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                        lineNumber: 140,
+                                        columnNumber: 13
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
+                                        id: "company",
+                                        name: "company",
+                                        type: "text",
+                                        value: formData.company,
+                                        onChange: handleChange,
+                                        required: true,
+                                        className: "border border-gray-200 rounded-md px-4 py-2"
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                        lineNumber: 143,
+                                        columnNumber: 13
+                                    }, this)
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                lineNumber: 139,
+                                columnNumber: 11
+                            }, this)
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                        lineNumber: 123,
+                        columnNumber: 9
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "grid grid-cols-1 md:grid-cols-2 gap-6",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "flex flex-col",
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
+                                        htmlFor: "domain",
+                                        className: "mb-1 font-medium",
+                                        children: "Domain/Industry *"
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                        lineNumber: 157,
+                                        columnNumber: 13
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("select", {
+                                        id: "domain",
+                                        name: "domain",
+                                        value: formData.domain,
+                                        onChange: handleChange,
+                                        required: true,
+                                        className: "border border-gray-200 rounded-md px-4 py-2",
+                                        children: [
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
+                                                value: "",
+                                                children: "Select a domain"
+                                            }, void 0, false, {
+                                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                                lineNumber: 168,
+                                                columnNumber: 15
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
+                                                value: "technology",
+                                                children: "Technology"
+                                            }, void 0, false, {
+                                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                                lineNumber: 169,
+                                                columnNumber: 15
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
+                                                value: "healthcare",
+                                                children: "Healthcare"
+                                            }, void 0, false, {
+                                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                                lineNumber: 170,
+                                                columnNumber: 15
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
+                                                value: "finance",
+                                                children: "Finance"
+                                            }, void 0, false, {
+                                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                                lineNumber: 171,
+                                                columnNumber: 15
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
+                                                value: "education",
+                                                children: "Education"
+                                            }, void 0, false, {
+                                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                                lineNumber: 172,
+                                                columnNumber: 15
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
+                                                value: "manufacturing",
+                                                children: "Manufacturing"
+                                            }, void 0, false, {
+                                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                                lineNumber: 173,
+                                                columnNumber: 15
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
+                                                value: "retail",
+                                                children: "Retail"
+                                            }, void 0, false, {
+                                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                                lineNumber: 174,
+                                                columnNumber: 15
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
+                                                value: "other",
+                                                children: "Other"
+                                            }, void 0, false, {
+                                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                                lineNumber: 175,
+                                                columnNumber: 15
+                                            }, this)
+                                        ]
+                                    }, void 0, true, {
+                                        fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                        lineNumber: 160,
+                                        columnNumber: 13
+                                    }, this)
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                lineNumber: 156,
+                                columnNumber: 11
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "flex flex-col",
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
+                                        htmlFor: "location",
+                                        className: "mb-1 font-medium",
+                                        children: "Location"
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                        lineNumber: 180,
+                                        columnNumber: 13
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
+                                        id: "location",
+                                        name: "location",
+                                        type: "text",
+                                        value: formData.location,
+                                        onChange: handleChange,
+                                        className: "border border-gray-200 rounded-md px-4 py-2",
+                                        placeholder: "City, State or Remote"
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                        lineNumber: 183,
+                                        columnNumber: 13
+                                    }, this)
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                lineNumber: 179,
+                                columnNumber: 11
+                            }, this)
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                        lineNumber: 155,
+                        columnNumber: 9
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "flex flex-col",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
+                                htmlFor: "description",
+                                className: "mb-1 font-medium",
+                                children: "Job Description *"
+                            }, void 0, false, {
+                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                lineNumber: 196,
+                                columnNumber: 11
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("textarea", {
+                                id: "description",
+                                name: "description",
+                                value: formData.description,
+                                onChange: handleChange,
+                                required: true,
+                                rows: 6,
+                                className: "border border-gray-200 rounded-md px-4 py-2 resize-none"
+                            }, void 0, false, {
+                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                lineNumber: 199,
+                                columnNumber: 11
+                            }, this)
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                        lineNumber: 195,
+                        columnNumber: 9
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "flex flex-col",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
+                                htmlFor: "requirements",
+                                className: "mb-1 font-medium",
+                                children: "Requirements"
+                            }, void 0, false, {
+                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                lineNumber: 211,
+                                columnNumber: 11
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("textarea", {
+                                id: "requirements",
+                                name: "requirements",
+                                value: formData.requirements,
+                                onChange: handleChange,
+                                rows: 4,
+                                className: "border border-gray-200 rounded-md px-4 py-2 resize-none"
+                            }, void 0, false, {
+                                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                                lineNumber: 214,
+                                columnNumber: 11
+                            }, this)
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                        lineNumber: 210,
+                        columnNumber: 9
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "flex justify-center",
+                        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                            type: "submit",
+                            disabled: loading,
+                            className: `bg-gray-600 text-white font-semibold rounded-md px-6 py-3 
+              ${loading ? 'cursor-not-allowed opacity-50' : 'hover:bg-gray-700'}`,
+                            children: loading ? 'Uploading...' : 'Submit Job Posting'
+                        }, void 0, false, {
+                            fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                            lineNumber: 225,
+                            columnNumber: 11
+                        }, this)
+                    }, void 0, false, {
+                        fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                        lineNumber: 224,
+                        columnNumber: 9
+                    }, this)
+                ]
+            }, void 0, true, {
+                fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
+                lineNumber: 122,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/recruiter/UploadJobPosting.tsx",
-        lineNumber: 14,
+        lineNumber: 100,
         columnNumber: 5
     }, this);
 }
-_s(UploadJobPosting, "Nkb8eHkBruGouXteoqeZ1R6wRVk=");
+_s(UploadJobPosting, "0ythLHIlUS/741rF1uuSm6L96oE=");
 _c = UploadJobPosting;
 var _c;
 __turbopack_refresh__.register(_c, "UploadJobPosting");
