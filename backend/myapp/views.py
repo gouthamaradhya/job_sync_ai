@@ -1,36 +1,42 @@
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import api_view
+
 from django.shortcuts import render
 import os
 import pytesseract
 from pdf2image import convert_from_path
 from PIL import Image
 from PyPDF2 import PdfReader
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.core.files.storage import FileSystemStorage
 from .models import Resume
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from myapp.models import Resume  # Replace `myapp` with your actual app name
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
 from groq import Groq  # Ensure `groq` is installed and imported
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from huggingface_hub import InferenceClient
-from .models import Resume  # Assuming you have a Resume model
-from django.http import HttpResponse
+import json
 from supabase import create_client, Client
-import os
-from dotenv import load_dotenv
-from django.http import JsonResponse
 import numpy as np
 import requests
+from dotenv import load_dotenv
+from sentence_transformers import SentenceTransformer
+from .models import JobDescription, JobRecruiter
+from .serializers import JobDescriptionSerializer, DomainSerializer
+
+
+# Initialize the model once at module level
+model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
 load_dotenv() 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-
-
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def get_supabase_client():
+    """Helper function to get Supabase client"""
+    return supabase
 
 @csrf_exempt
 def upload_resume(request):
@@ -78,6 +84,23 @@ def upload_resume(request):
             
             # Save the extracted text in the database
             resume = Resume.objects.create(name=uploaded_file.name, text=text)
+            
+            # Generate and store resume embedding in Supabase
+            try:
+                # Generate embedding using the local model
+                vector = model.encode(text).tolist()
+                
+                # Store in Supabase resume_vectors table
+                supabase_client = get_supabase_client()
+                supabase_client.table("resume_vectors").insert({
+                    "id": resume.id,
+                    "name": uploaded_file.name,
+                    "text": text,
+                    "embedding": vector
+                }).execute()
+            except Exception as e:
+                print(f"Warning: Failed to store resume vector in Supabase: {e}")
+            
             resume.save()
             
             return JsonResponse({"message": "Resume uploaded successfully", "resume_id": resume.id}, status=201)
@@ -119,16 +142,6 @@ def analyze_resume(request):
     if request.method == "GET":
         print("✅ Received GET request for analyzing resume.")
 
-        # Initialize the Hugging Face Inference Client
-        try:
-            # Store API keys in environment variables or settings, not in code
-            hf_api_key = os.getenv("HUGGING_FACE_API_KEY")
-            client = InferenceClient(api_key=hf_api_key)
-            print("✅ Hugging Face Inference Client initialized.")
-        except Exception as e:
-            print(f"❌ Error initializing Hugging Face client: {e}")
-            return JsonResponse({"error": f"Failed to initialize Hugging Face Client: {str(e)}"}, status=500)
-
         # Retrieve the most recent resume data from SQLite
         try:
             resume_instance = Resume.objects.last()
@@ -143,29 +156,24 @@ def analyze_resume(request):
             print(f"❌ Error fetching resume from the database: {e}")
             return JsonResponse({"error": str(e)}, status=500)
 
-        # Perform embedding using the HF Inference API
+        # Perform embedding using the local model
         try:
-            print("🔄 Sending resume for embedding...")
-            vector = client.feature_extraction(
-                user_resume,
-                model="sentence-transformers/all-MiniLM-L6-v2"
-            )
+            print("🔄 Generating resume embedding locally...")
+            # Use the model imported at the top of the file
+            vector = model.encode(user_resume).tolist()
 
             if vector is not None and len(vector) > 0:
-                vector_list = vector.tolist() if isinstance(vector, np.ndarray) else vector
-
                 print(f"✅ Vector generated successfully: Length - {len(vector)}")
 
                 # Match filtered jobs using the generated vector
                 print("🔄 Matching filtered jobs...")
-                result = match_filtered_jobs(vector_list)
-                print(result)
+                result = match_filtered_jobs(vector)
                 
                 # Process result
-                if hasattr(result, 'data'):
-                    matched_jobs = result.data
-                else:
-                    matched_jobs = result
+                if isinstance(result, dict) and "error" in result:
+                    return JsonResponse(result, status=500)
+                
+                matched_jobs = result
                 
                 # New functionality: Analyze resume and matched jobs with Groq
                 try:
@@ -224,8 +232,8 @@ def analyze_resume(request):
                         "job_analysis_error": str(e)
                     }, status=200)
             else:
-                print("❌ Empty or invalid vector response from Hugging Face API.")
-                return JsonResponse({"error": "Invalid response format from Hugging Face API"}, status=500)
+                print("❌ Empty or invalid vector response.")
+                return JsonResponse({"error": "Failed to generate embedding vector"}, status=500)
 
         except Exception as e:
             print(f"❌ Error in processing: {e}")
@@ -235,350 +243,330 @@ def analyze_resume(request):
     print("❌ Invalid request method. Only GET is allowed.")
     return JsonResponse({"error": "Invalid request method. Only GET is allowed."}, status=405)
 
-from django.http import HttpResponse, JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.conf import settings
-import json
-import requests
-import os
-import base64
-import tempfile
-from django.core.files.base import ContentFile
-import logging
-
-# Set up logging
-logger = logging.getLogger(__name__)
-
-# Import your existing analysis functions
-# from your_analysis_app.services import analyze_resume
-
-# WhatsApp API settings
-WHATSAPP_API_URL = "https://graph.facebook.com/v18.0"
-VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
-ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
-PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
-
-# User session tracking - simple in-memory store
-# In production, use a database or Redis
-user_sessions = {}
-
-@csrf_exempt
-def whatsapp_webhook(request):
-    """Main webhook endpoint that handles both verification and incoming messages"""
-    logger.info(f"Received {request.method} request to webhook")
+@api_view(['GET'])
+def get_jobs_by_domain(request):
+    """
+    API endpoint to fetch jobs by domain from Supabase
     
-    if request.method == "GET":
-        # Handle verification request from Meta (via Next.js proxy)
-        return verify_webhook(request)
-    elif request.method == "POST":
-        # Handle incoming messages (via Next.js proxy)
-        return process_incoming_message(request)
-    else:
-        return HttpResponse(status=405)  # Method not allowed
-
-def verify_webhook(request):
-    """Verifies the webhook with Meta Developer platform"""
-    logger.info("Processing webhook verification request")
+    Query parameters:
+    - domain: The domain category to filter jobs by
+    """
+    domain = request.GET.get('domain', None)
     
-    mode = request.GET.get("hub.mode")
-    token = request.GET.get("hub.verify_token")
-    challenge = request.GET.get("hub.challenge")
+    if not domain:
+        return Response({"error": "Domain parameter is required"}, status=status.HTTP_400_BAD_REQUEST)
     
-    logger.info(f"Verification params - Mode: {mode}, Token: {'*' * len(token) if token else None}, Challenge: {challenge}")
-    
-    if mode and token:
-        if mode == "subscribe" and token == VERIFY_TOKEN:
-            logger.info("Webhook verified successfully!")
-            return HttpResponse(challenge, status=200)
-        else:
-            logger.warning("Failed webhook verification - invalid token or mode")
-            return HttpResponse(status=403)  # Forbidden
-    
-    logger.warning("Bad verification request - missing parameters")
-    return HttpResponse(status=400)  # Bad request
-
-def process_incoming_message(request):
-    """Processes incoming WhatsApp messages"""
     try:
-        # Log request headers for debugging
-        logger.info(f"Headers: {request.headers}")
+        # Use the helper function
+        supabase = get_supabase_client()
         
-        # Parse the request body
-        data = json.loads(request.body.decode("utf-8"))
-        logger.info(f"Received webhook data: {json.dumps(data)[:500]}...")  # Log first 500 chars
+        # Fetch jobs from Supabase that match the specified domain
+        response = supabase.table("job_description").select("*").eq("domain", domain).execute()
         
-        # Check if this is a WhatsApp Business API message
-        if data.get("object") == "whatsapp_business_account":
-            for entry in data.get("entry", []):
-                for change in entry.get("changes", []):
-                    if change.get("field") == "messages":
-                        if "messages" in change.get("value", {}):
-                            process_message(change["value"])
-        
-        return HttpResponse(status=200)
-    except Exception as e:
-        logger.error(f"Error processing message: {e}", exc_info=True)
-        return HttpResponse(status=500)
-
-def process_message(value):
-    """Processes a specific message and determines the response"""
-    try:
-        # Extract message information
-        message = value["messages"][0]
-        message_id = message["id"]
-        phone_number = value["contacts"][0]["wa_id"]
-        
-        logger.info(f"Processing message from {phone_number}, message_id: {message_id}")
-        
-        # Track user session
-        if phone_number not in user_sessions:
-            user_sessions[phone_number] = {"state": "new"}
-            logger.info(f"New user session created for {phone_number}")
-        
-        # Handle message based on type
-        if "text" in message:
-            text_content = message["text"]["body"]
-            logger.info(f"Received text message: {text_content}")
-            handle_text_message(phone_number, text_content)
-        elif "image" in message:
-            logger.info(f"Received image message from {phone_number}")
-            handle_file_message(phone_number, message)
-        elif "document" in message:
-            logger.info(f"Received document message from {phone_number}")
-            handle_file_message(phone_number, message)
+        # Check if we got data back
+        if hasattr(response, 'data') and response.data:
+            return Response(response.data)
         else:
-            # Handle other message types
-            logger.info(f"Received unsupported message type from {phone_number}")
-            send_message(phone_number, "I can only process text messages and files. Please send a message or your resume.")
+            return Response([], status=status.HTTP_200_OK)  # Return empty list if no jobs found
+            
     except Exception as e:
-        logger.error(f"Error in process_message: {e}", exc_info=True)
-
-def handle_text_message(phone_number, message_text):
-    """Handles text messages from users"""
-    message_text = message_text.lower().strip()
-    user_state = user_sessions[phone_number]["state"]
-    
-    logger.info(f"Handling text message '{message_text}' from {phone_number} (state: {user_state})")
-    
-    if message_text == "hi" or message_text == "hello":
-        # Welcome message
-        send_message(
-            phone_number,
-            "👋 Welcome to Job Sync AI!\n\n"
-            "I can help analyze your resume and provide personalized feedback. "
-            "Would you like to upload your resume now? (Reply with 'yes' to proceed)"
-        )
-        user_sessions[phone_number]["state"] = "awaiting_confirmation"
-    
-    elif user_state == "awaiting_confirmation" and (message_text == "yes" or message_text == "y"):
-        # Prompt for resume upload
-        send_message(
-            phone_number,
-            "Great! Please upload your resume as a PDF or image file."
-        )
-        user_sessions[phone_number]["state"] = "awaiting_resume"
-    
-    elif user_state == "analysis_complete":
-        # After analysis is complete, reset state if user sends another message
-        send_message(
-            phone_number,
-            "Do you want to analyze another resume? Reply with 'yes' to proceed."
-        )
-        user_sessions[phone_number]["state"] = "awaiting_confirmation"
-    
-    else:
-        # Default response
-        send_message(
-            phone_number,
-            "I'm here to help analyze your resume. Say 'hi' to start over, or upload your resume if you're ready."
+        print(f"Error fetching jobs from Supabase: {str(e)}")
+        return Response(
+            {"error": "Failed to fetch jobs. Please try again later."}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-def handle_file_message(phone_number, message):
-    """Handles file messages (resumes) from users"""
-    user_state = user_sessions[phone_number]["state"]
-    logger.info(f"Handling file message from {phone_number} (state: {user_state})")
-    
-    # Check if we're expecting a resume
-    if user_state != "awaiting_resume" and user_state != "analysis_complete":
-        send_message(
-            phone_number,
-            "I wasn't expecting a file yet. Please say 'hi' to start the resume analysis process."
+@api_view(['GET'])
+def get_all_domains(request):
+    """
+    API endpoint to fetch all available job domains
+    """
+    try:
+        # Use the helper function
+        supabase = get_supabase_client()
+        
+        # Query to get unique domains
+        response = supabase.table("job_description").select("domain").execute()
+        
+        if hasattr(response, 'data') and response.data:
+            # Extract unique domains
+            domains = list(set([item['domain'] for item in response.data if item.get('domain')]))
+            return Response(domains)
+        else:
+            return Response([], status=status.HTTP_200_OK)
+            
+    except Exception as e:
+        print(f"Error fetching domains from Supabase: {str(e)}")
+        return Response(
+            {"error": "Failed to fetch domains. Please try again later."}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-        return
+
+
+@api_view(['POST'])
+def match_candidates_for_job(request):
+    """
+    API endpoint to find the best candidates for a job description
+    """
+    if request.method != "POST":
+        return Response({"error": "Invalid request method"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
     
-    # Determine file type
-    file_type = None
-    media_id = None
-    if "image" in message:
-        file_type = "image"
-        media_id = message["image"]["id"]
-        logger.info(f"Received image with media ID: {media_id}")
-    elif "document" in message:
-        file_type = "document"
-        media_id = message["document"]["id"]
-        mime_type = message["document"].get("mime_type", "unknown")
-        logger.info(f"Received document with media ID: {media_id}, mime_type: {mime_type}")
+    try:
+        data = request.data
+        job_description = data.get('job_description')
         
-    if media_id:
-        # Download the file
-        send_message(phone_number, "Downloading your resume... Please wait.")
-        file_path = download_media(media_id)
+        if not job_description:
+            return Response({"error": "Job description is required"}, status=status.HTTP_400_BAD_REQUEST)
         
-        if file_path:
-            logger.info(f"Successfully downloaded file to {file_path}")
-            # Process the resume
-            send_message(phone_number, "Analyzing your resume... This may take a moment.")
+        # Generate embedding locally
+        vector = model.encode(job_description).tolist()
+        
+        # Match candidates using a Supabase function
+        match_threshold = 0.2
+        match_count = 10
+        
+        # Call Supabase function to match candidates
+        supabase = get_supabase_client()
+        response = supabase.rpc(
+            "match_candidates", 
+            {
+                "query_embedding": vector,
+                "match_threshold": match_threshold,
+                "match_count": match_count
+            }
+        ).execute()
+        
+        if not response or not hasattr(response, 'data'):
+            return Response({"error": "Invalid response from Supabase"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        matched_candidates = response.data
+        
+        # Use Groq to analyze the matches
+        try:
+            groq_api_key = os.getenv("GROQ_API_KEY")
+            
+            # Prepare candidate data for the prompt
+            candidates_text = ""
+            for i, candidate in enumerate(matched_candidates, 1):
+                candidates_text += f"Candidate {i}: {candidate.get('name', 'Unknown')}\n"
+                candidates_text += f"Resume: {candidate.get('text', 'No resume available')[:500]}...\n\n"
+            
+            # Create prompt for Groq
+            prompt = f"""
+            Given the following job description and matched candidate resumes, please:
+            1. Rank the candidates from best to worst match for the position
+            2. Explain why each candidate is suited for the role
+            3. Identify any missing skills or experience for each candidate
+            
+            JOB DESCRIPTION:
+            {job_description}
+            
+            MATCHED CANDIDATES:
+            {candidates_text}
+            """
+            
+            # Make request to Groq
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {groq_api_key}"
+                },
+                json={
+                    "model": "gemma2-9b-it",
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+            )
+            
+            groq_data = response.json()
+            analysis = groq_data.get("choices", [{}])[0].get("message", {}).get("content", "Analysis unavailable")
+            
+            # Return both matched candidates and the analysis
+            return Response({
+                "matched_candidates": matched_candidates,
+                "candidate_analysis": analysis
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"Error in Groq analysis: {e}")
+            # Continue even if Groq analysis fails, just return matched candidates
+            return Response({
+                "matched_candidates": matched_candidates,
+                "candidate_analysis_error": str(e)
+            }, status=status.HTTP_200_OK)
+            
+    except Exception as e:
+        print(f"Error matching candidates: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def insert_job_to_supabase(job_data):
+    """
+    Insert job data into Supabase job_description table
+    """
+    client = get_supabase_client()
+    
+    # Insert into job_description table
+    result = client.table('job_description').insert({
+        'id': str(job_data['id']),
+        'uuid': str(job_data['uuid']),
+        'domain': job_data['domain'],
+        'description': job_data['description'],
+        'salary': float(job_data['salary']),
+        'contact_info': job_data['contact_info'],
+        'recruiter_id': str(job_data['recruiter_id']),
+        'application_link': job_data['application_link']
+    }).execute()
+    
+    return result
+
+def insert_vector_to_supabase(vector_data):
+    """
+    Insert vector data into Supabase vector_table
+    """
+    client = get_supabase_client()
+    
+    # Insert into vector_table
+    result = client.table('vector_table').insert({
+        'id': str(vector_data['id']),
+        'job_id': str(vector_data['job_id']),
+        'embedding': vector_data['embedding']
+    }).execute()
+    
+    return result
+
+@api_view(['GET'])
+def get_domains(request):
+    """API endpoint to get available job domains"""
+    # For demonstration, hard-coded domains
+    # In a real app, you might fetch these from a database
+    domains = [
+        "Software Development",
+        "Data Science",
+        "DevOps",
+        "Product Management",
+        "UX/UI Design",
+        "Marketing",
+        "Sales",
+        "Customer Support",
+        "Human Resources",
+        "Finance"
+    ]
+    return Response(domains)
+
+@api_view(['POST'])
+def upload_job_posting(request):
+    """
+    API endpoint to receive job postings from the NextJS frontend and store them in Supabase
+    """
+    try:
+        data = request.data
+        
+        # Extract job posting data
+        title = data.get('title')
+        company = data.get('company')
+        description = data.get('description')
+        requirements = data.get('requirements', '')
+        location = data.get('location', '')
+        domain = data.get('domain')
+        
+        # Debug information
+        print(f"Received data: title={title}, company={company}, domain={domain}")
+        
+        # Validate required fields
+        if not all([title, company, description, domain]):
+            return Response({"error": "Missing required fields"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Create and save the job description in the local database
+            job_description = JobDescription.objects.create(
+                title=title,
+                description=description,
+                company=company,
+                location=location,
+                domain=domain
+            )
+            
+            # For debugging - to ensure we're correctly creating the Django model
+            print(f"Created JobDescription with ID: {job_description.id}")
             
             try:
-                # Call your existing resume analysis function
-                # analysis_result = analyze_resume(file_path)
+                # Generate vector embedding using sentence-transformers
+                # Import model inside try/except to handle potential import errors gracefully
+                from sentence_transformers import SentenceTransformer
+                model = SentenceTransformer('all-MiniLM-L6-v2')
                 
-                # For now, we'll return a placeholder result
-                # In production, integrate with your existing analysis code
-                analysis_result = {
-                    "skills": ["Python", "JavaScript", "React", "Django"],
-                    "experience_years": 3,
-                    "education": "Bachelor's Degree",
-                    "missing_keywords": ["Docker", "AWS"],
-                    "improvement_suggestions": [
-                        "Add more quantifiable achievements",
-                        "Include certifications",
-                        "Highlight leadership experiences"
-                    ]
-                }
+                combined_text = f"{title} {company} {description} {requirements}"
+                vector = model.encode(combined_text).tolist()
                 
-                logger.info(f"Analysis complete for {phone_number}")
-                
-                # Format and send the analysis
-                send_analysis_result(phone_number, analysis_result)
-                user_sessions[phone_number]["state"] = "analysis_complete"
-                
-                # Clean up file
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                    logger.info(f"Cleaned up temporary file {file_path}")
+                try:
+                    # Import supabase client inside try/except to handle potential import errors
+                    from .supabase_client import get_supabase_client
+                    supabase_client = get_supabase_client()
                     
-            except Exception as e:
-                logger.error(f"Error analyzing resume: {e}", exc_info=True)
-                send_message(
-                    phone_number,
-                    "I encountered an error while analyzing your resume. Please try uploading it again."
-                )
-        else:
-            logger.error(f"Failed to download media with ID {media_id}")
-            send_message(
-                phone_number,
-                "I couldn't download your file. Please try uploading it again."
-            )
-    else:
-        logger.warning(f"Could not determine media ID from message")
-        send_message(
-            phone_number,
-            "I couldn't process your file. Please upload a PDF or image file of your resume."
-        )
-
-def send_analysis_result(phone_number, analysis_result):
-    """Formats and sends the resume analysis results"""
-    logger.info(f"Sending analysis results to {phone_number}")
-    
-    # Create a formatted message with the analysis results
-    message = "📋 *Your Resume Analysis Results* 📋\n\n"
-    
-    # Skills section
-    message += "*Skills Identified:*\n"
-    skills = ", ".join(analysis_result["skills"])
-    message += f"• {skills}\n\n"
-    
-    # Experience and education
-    message += f"*Experience:* {analysis_result['experience_years']} years\n"
-    message += f"*Education:* {analysis_result['education']}\n\n"
-    
-    # Missing keywords
-    message += "*Missing Keywords:*\n"
-    missing = ", ".join(analysis_result["missing_keywords"])
-    message += f"• {missing}\n\n"
-    
-    # Improvement suggestions
-    message += "*Suggestions for Improvement:*\n"
-    for idx, suggestion in enumerate(analysis_result["improvement_suggestions"], 1):
-        message += f"{idx}. {suggestion}\n"
-    
-    # Conclusion
-    message += "\nWould you like to upload another resume? Reply with 'yes' to analyze a different resume."
-    
-    send_message(phone_number, message)
-
-def download_media(media_id):
-    """Downloads media (resume) from WhatsApp servers"""
-    try:
-        logger.info(f"Attempting to download media with ID: {media_id}")
-        
-        # Get media URL
-        headers = {
-            "Authorization": f"Bearer {ACCESS_TOKEN}"
-        }
-        url = f"{WHATSAPP_API_URL}/{media_id}"
-        
-        logger.info(f"Requesting media URL from: {url}")
-        response = requests.get(url, headers=headers)
-        
-        if response.status_code == 200:
-            media_data = response.json()
-            media_url = media_data.get("url")
-            
-            logger.info(f"Got media URL: {media_url[:50]}...")  # Log part of URL for debugging
-            
-            # Download the file
-            media_response = requests.get(media_url, headers=headers)
-            if media_response.status_code == 200:
-                logger.info(f"Downloaded media content, size: {len(media_response.content)} bytes")
-                
-                # Create a temporary file
-                fd, temp_path = tempfile.mkstemp()
-                with os.fdopen(fd, 'wb') as file:
-                    file.write(media_response.content)
+                    # Insert into Supabase job_description table
+                    job_response = supabase_client.table("job_description").insert({
+                        "id": str(job_description.id),  # Use Django model ID as Supabase ID
+                        "uuid": str(job_description.id),  # Using the same ID for uuid field
+                        "domain": domain,
+                        "description": description,
+                        "salary": 0,  # Default value as per schema
+                        "contact_info": company,  # Using company as contact info
+                        "recruiter_id": "00000000-0000-0000-0000-000000000000",  # Default UUID
+                        "application_link": ""  # Empty application link
+                    }).execute()
                     
-                logger.info(f"Saved media to temporary file: {temp_path}")
-                return temp_path
-            else:
-                logger.error(f"Failed to download media content: {media_response.status_code}, {media_response.text[:100]}")
-        else:
-            logger.error(f"Failed to get media URL: {response.status_code}, {response.text[:100]}")
-    
+                    # Insert vector embedding into vector_table
+                    vector_response = supabase_client.table("vector_table").insert({
+                        "id": str(uuid.uuid4()),  # Generate new UUID for vector table
+                        "job_id": str(job_description.id),  # Reference to job description
+                        "embedding": vector  # The embedding vector
+                    }).execute()
+                    
+                    print("Successfully inserted data into Supabase")
+                    
+                except Exception as supabase_error:
+                    # Handle Supabase integration errors
+                    print(f"Supabase error: {str(supabase_error)}")
+                    # If Supabase fails but Django DB succeeded, we still return success
+                    # but include a warning
+                    return Response({
+                        "status": "partial_success", 
+                        "message": "Job posting created in local database but Supabase integration failed",
+                        "job_id": job_description.id,
+                        "warning": str(supabase_error)
+                    }, status=status.HTTP_201_CREATED)
+                
+            except ImportError as import_error:
+                # Handle missing sentence-transformers package
+                print(f"Import error: {str(import_error)}")
+                return Response({
+                    "status": "partial_success", 
+                    "message": "Job posting created but vector embedding failed",
+                    "job_id": job_description.id,
+                    "error_detail": str(import_error)
+                }, status=status.HTTP_201_CREATED)
+            
+            return Response({
+                "status": "success", 
+                "message": "Job posting created successfully",
+                "job_id": job_description.id
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as db_error:
+            # Database-specific errors
+            print(f"Database error: {str(db_error)}")
+            return Response({
+                "status": "error", 
+                "message": "Database error",
+                "error_detail": str(db_error)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
     except Exception as e:
-        logger.error(f"Error downloading media: {e}", exc_info=True)
-    
-    return None
+        # Catch-all for any other errors
+        print(f"General error: {str(e)}")
+        return Response({
+            "status": "error", 
+            "message": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-def send_message(phone_number, message_text):
-    """Sends a WhatsApp message to the user"""
-    logger.info(f"Sending message to {phone_number}: {message_text[:50]}...")  # Log part of message
-    
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {ACCESS_TOKEN}"
-    }
-    
-    payload = {
-        "messaging_product": "whatsapp",
-        "recipient_type": "individual",
-        "to": phone_number,
-        "type": "text",
-        "text": {
-            "body": message_text
-        }
-    }
-    
-    try:
-        url = f"{WHATSAPP_API_URL}/{PHONE_NUMBER_ID}/messages"
-        logger.info(f"Sending message to WhatsApp API: {url}")
-        
-        response = requests.post(url, headers=headers, json=payload)
-        
-        if response.status_code == 200:
-            logger.info(f"Message sent successfully to {phone_number}")
-        else:
-            logger.error(f"Error sending message: {response.status_code}, {response.text[:100]}")
-    
-    except Exception as e:
-        logger.error(f"Error sending message: {e}", exc_info=True)
