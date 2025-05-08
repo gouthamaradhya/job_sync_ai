@@ -14,7 +14,6 @@ urlpatterns = [
     path('api/domains/', views.get_domains, name='get_domains'),
     path('upload-job-posting/', views.upload_job_posting, name='upload_job_posting'),# New URL
     path('api/upload-job-posting/', views.upload_job_posting, name='upload_job_posting'),
-    path('webhook/', views.whatsapp_webhook, name='whatsapp_webhook'),
 ]
 
 # Serve media files in development (for local testing)

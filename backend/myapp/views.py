@@ -4,6 +4,7 @@ from rest_framework.decorators import api_view
 from django.shortcuts import render
 import os
 import pytesseract
+import time
 from pdf2image import convert_from_path
 from PIL import Image
 from PyPDF2 import PdfReader
@@ -23,6 +24,7 @@ from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
 from .models import JobDescription, JobRecruiter
 from .serializers import JobDescriptionSerializer, DomainSerializer
+import uuid
 
 
 # Initialize the model once at module level
@@ -177,58 +179,141 @@ def analyze_resume(request):
                 
                 # New functionality: Analyze resume and matched jobs with Groq
                 try:
-                    print("🔄 Analyzing resume fit with Groq Gemma2...")
+                    print("🔄 Analyzing resume fit with Groq LLM...")
                     # Get Groq API key from environment variables
                     groq_api_key = os.getenv("GROQ_API_KEY")
                     
-                    # Prepare job descriptions for the prompt
+                    if not groq_api_key:
+                        print("❌ GROQ_API_KEY environment variable not set")
+                        return JsonResponse({
+                            "matched_jobs": matched_jobs,
+                            "job_analysis_error": "Groq API key not configured"
+                        }, status=200)
+                    
+                    # Prepare job descriptions for the prompt - limit to top 3 to avoid token issues
                     jobs_text = ""
                     for i, job in enumerate(matched_jobs, 1):
-                        jobs_text += f"Job {i}: {job.get('title', 'No title')}\n"
-                        jobs_text += f"Description: {job.get('description', 'No description')}\n\n"
+                        jobs_text += f"Job {i}: {job.get('domain', 'No title')}\n"
+                        # Truncate job descriptions to manage token count
+                        description = job.get('description', 'No description')
+                        if len(description) > 1000:
+                            description = description[:1000] + "... (truncated)"
+                        jobs_text += f"Description: {description}\n\n"
                     
-                    # Create prompt for Groq
+                    # Create a more structured prompt for Groq that's likely to generate better responses
                     prompt = f"""
-                    Given the following resume and matched job opportunities, please:
-                    1. Explain why each job might be suitable for the candidate
-                    2. Identify skills the candidate is lacking for each role
-                    3. Suggest resources for upskilling in those areas
+                    Please analyze the following resume against these job opportunities. 
+                    
+                    For each job, provide the following sections in a clear, structured format:
+
+                    1. Match Assessment: How well does the candidate's resume match the job requirements?
+                    2. Key Matching Skills: List the top skills from the resume that match this job.
+                    3. Missing Skills: Identify important skills mentioned in the job description that are not evident in the resume.
+                    4. Recommended Learning: Suggest specific resources (courses, certifications, projects) to develop the missing skills.
+                    
+                    Format your response as markdown with clear headings and bullet points.
                     
                     RESUME:
-                    {user_resume}
+                    {user_resume}  # Truncate if needed
                     
                     MATCHED JOBS:
                     {jobs_text}
                     """
                     
-                    # Make request to Groq
-                    response = requests.post(
-                        "https://api.groq.com/openai/v1/chat/completions",
-                        headers={
-                            "Content-Type": "application/json",
-                            "Authorization": f"Bearer {groq_api_key}"
-                        },
-                        json={
-                            "model": "gemma2-9b-it",
-                            "messages": [{"role": "user", "content": prompt}]
-                        }
-                    )
+                    # Try Mixtral first (more stable), fallback to Gemma if needed
+                    models_to_try = ["llama-3.3-70b-versatile", "gemma2-9b-it"]
                     
-                    groq_data = response.json()
-                    analysis = groq_data.get("choices", [{}])[0].get("message", {}).get("content", "Analysis unavailable")
-                    print("✅ Received analysis from Groq")
+                    analysis = None
+                    for model_name in models_to_try:
+                        try:
+                            print(f"🔄 Attempting analysis with model: {model_name}")
+                            # Make request to Groq with retry logic
+                            for attempt in range(3):  # Try up to 3 times
+                                try:
+                                    response = requests.post(
+                                        "https://api.groq.com/openai/v1/chat/completions",
+                                        headers={
+                                            "Content-Type": "application/json",
+                                            "Authorization": f"Bearer {groq_api_key}"
+                                        },
+                                        json={
+                                            "model": model_name,
+                                            "messages": [{"role": "user", "content": prompt}],
+                                            "temperature": 0.3,  # Lower temperature for more consistent output
+                                            "max_tokens": 2048
+                                        },
+                                        timeout=30
+                                    )
+                                    
+                                    # Check if response is valid JSON
+                                    try:
+                                        groq_data = response.json()
+
+                                    except json.JSONDecodeError:
+                                        print(f"❌ Invalid JSON response from Groq: {response.text[:100]}...")
+                                        if attempt < 2:  # If not the last attempt
+                                            time.sleep(2)  # Wait before retrying
+                                            continue
+                                        raise Exception("Failed to parse Groq API response")
+                                    
+                                    # Validate response format
+                                    if not isinstance(groq_data, dict) or "choices" not in groq_data:
+                                        print(f"❌ Unexpected response structure: {groq_data}")
+                                        if attempt < 2:
+                                            time.sleep(2)
+                                            continue
+                                        raise Exception("Invalid response structure from Groq API")
+                                    
+                                    # Extract and validate content
+                                    content = groq_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                                    
+                                    # Check if content is malformed (like in the example with lots of ** symbols)
+                                    if content.count("**") > 20 or len(content.strip()) < 100:
+                                        print("❌ Received malformed or truncated content from Groq")
+                                        if attempt < 2:
+                                            time.sleep(2)
+                                            continue
+                                    else:
+                                        # Valid response
+                                        analysis = content
+                                        print(analysis,matched_jobs)
+                                        break
+                                        
+                                except requests.exceptions.RequestException as e:
+                                    print(f"❌ Network error in Groq request (attempt {attempt+1}): {e}")
+                                    if attempt < 2:
+                                        time.sleep(2)
+                                        continue
+                                    raise
+                            
+                            # If we got a valid analysis, break out of the model loop
+                            if analysis:
+                                print(f"✅ Successfully obtained analysis from {model_name}")
+                                break
+                                
+                        except Exception as model_e:
+                            print(f"❌ Error using model {model_name}: {model_e}")
+                            # Continue to the next model if this one failed
+                    
+                    # If no models succeeded, generate a fallback analysis
+                    if not analysis:
+                        print("❌ All LLM models failed, generating fallback analysis")
+                        analysis = generate_fallback_analysis(user_resume, matched_jobs)
                     
                     # Return both matched jobs and the analysis
                     return JsonResponse({
                         "matched_jobs": matched_jobs,
                         "job_analysis": analysis
                     }, status=200)
+                
                     
                 except Exception as e:
-                    print(f"❌ Error in Groq analysis: {e}")
-                    # Continue even if Groq analysis fails, just return matched jobs
+                    print(f"❌ Error in LLM analysis: {e}")
+                    # Generate a fallback analysis without the LLM
+                    fallback_analysis = generate_fallback_analysis(user_resume, matched_jobs)
                     return JsonResponse({
                         "matched_jobs": matched_jobs,
+                        "job_analysis": fallback_analysis,
                         "job_analysis_error": str(e)
                     }, status=200)
             else:
@@ -242,6 +327,80 @@ def analyze_resume(request):
     # Return error for invalid request methods
     print("❌ Invalid request method. Only GET is allowed.")
     return JsonResponse({"error": "Invalid request method. Only GET is allowed."}, status=405)
+
+
+def generate_fallback_analysis(resume, jobs):
+    """Generate a basic analysis without using an LLM when the API call fails"""
+    
+    # Create a simple analysis based on keyword matching
+    analysis = "# Resume Analysis (System Generated)\n\n"
+    analysis += "> Note: This is an automated analysis generated without AI assistance due to service limitations.\n\n"
+    
+    # Extract keywords from resume (simple approach)
+    resume_lower = resume.lower()
+    
+    # Common skills to check for
+    common_skills = [
+        "python", "javascript", "java", "c++", "sql", "aws", "azure", "gcp", 
+        "react", "angular", "vue", "node.js", "django", "flask", "express",
+        "docker", "kubernetes", "cicd", "devops", "machine learning", "ai",
+        "data science", "analytics", "agile", "scrum", "product management",
+        "html", "css", "ui", "ux", "design", "testing", "qa", "security"
+    ]
+    
+    # Find skills in resume
+    resume_skills = []
+    for skill in common_skills:
+        if skill in resume_lower:
+            resume_skills.append(skill)
+    
+    for i, job in enumerate(jobs[:3], 1):
+        job_title = job.get("title", "Unnamed Position")
+        company = job.get("company_name", "Unknown Company")
+        
+        analysis += f"## Job {i}: {job_title} at {company}\n\n"
+        
+        # Basic matching section
+        analysis += "### Match Assessment\n"
+        analysis += "A basic keyword analysis has been performed on your resume and this job listing.\n\n"
+        
+        # Check for skill matches in job description
+        job_desc_lower = job.get("description", "").lower()
+        matching_skills = []
+        missing_skills = []
+        
+        for skill in common_skills:
+            if skill in job_desc_lower:
+                if skill in resume_lower:
+                    matching_skills.append(skill)
+                else:
+                    missing_skills.append(skill)
+        
+        # Add matching skills
+        analysis += "### Key Matching Skills\n"
+        if matching_skills:
+            for skill in matching_skills:
+                analysis += f"- {skill.title()}\n"
+        else:
+            analysis += "- No specific skill matches detected\n"
+        
+        analysis += "\n### Missing Skills\n"
+        if missing_skills:
+            for skill in missing_skills[:5]:  # Limit to top 5
+                analysis += f"- {skill.title()}\n"
+        else:
+            analysis += "- No obvious skill gaps detected\n"
+        
+        analysis += "\n### Recommended Learning\n"
+        if missing_skills:
+            for skill in missing_skills[:3]:  # Recommend for top 3
+                analysis += f"- For {skill.title()}: Online courses on platforms like Coursera, Udemy, or LinkedIn Learning\n"
+        else:
+            analysis += "- Continue developing your current skillset\n"
+        
+        analysis += "\n\n"
+    
+    return analysis
 
 @api_view(['GET'])
 def get_jobs_by_domain(request):

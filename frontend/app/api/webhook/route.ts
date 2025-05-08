@@ -237,36 +237,154 @@ async function handleFileMessage(phoneNumber: string, message: any) {
     }
 }
 
+
 async function sendAnalysisResult(phoneNumber: string, analysisResult: any) {
     console.log(`Sending analysis results to ${phoneNumber}`);
 
-    // Create a formatted message with the analysis results
-    let message = "📋 *Your Resume Analysis Results* 📋\n\n";
+    try {
+        // First, send the resume analysis message
+        let analysisMessage = "📊 *YOUR RESUME ANALYSIS* 📊\n\n";
 
-    // Skills section
-    message += "*Skills Identified:*\n";
-    const skills = analysisResult.skills.join(", ");
-    message += `• ${skills}\n\n`;
+        // Add skills section
+        analysisMessage += "*Skills Identified:*\n";
+        const skills = analysisResult.skills?.join(", ") || "No specific skills identified";
+        analysisMessage += `• ${skills}\n\n`;
 
-    // Experience and education
-    message += `*Experience:* ${analysisResult.experience_years} years\n`;
-    message += `*Education:* ${analysisResult.education}\n\n`;
+        // Experience and education
+        analysisMessage += `*Experience:* ${analysisResult.experience_years || "Not specified"} years\n`;
+        analysisMessage += `*Education:* ${analysisResult.education || "Not specified"}\n\n`;
 
-    // Missing keywords
-    message += "*Missing Keywords:*\n";
-    const missing = analysisResult.missing_keywords.join(", ");
-    message += `• ${missing}\n\n`;
+        // Missing keywords
+        analysisMessage += "*Missing Keywords:*\n";
+        const missing = analysisResult.missing_keywords?.join(", ") || "None";
+        analysisMessage += `• ${missing}\n\n`;
 
-    // Improvement suggestions
-    message += "*Suggestions for Improvement:*\n";
-    analysisResult.improvement_suggestions.forEach((suggestion: string, idx: number) => {
-        message += `${idx + 1}. ${suggestion}\n`;
-    });
+        // Improvement suggestions
+        analysisMessage += "*Suggestions for Improvement:*\n";
+        if (analysisResult.improvement_suggestions && analysisResult.improvement_suggestions.length > 0) {
+            analysisResult.improvement_suggestions.forEach((suggestion: string, idx: number) => {
+                analysisMessage += `${idx + 1}. ${suggestion}\n`;
+            });
+        } else {
+            analysisMessage += "• No specific suggestions at this time\n";
+        }
 
-    // Conclusion
-    message += "\nWould you like to upload another resume? Reply with 'yes' to analyze a different resume.";
+        // Send the analysis message
+        await sendMessage(phoneNumber, analysisMessage);
 
-    await sendMessage(phoneNumber, message);
+        // Wait a moment before sending job matches to avoid message rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Now handle job matches if they exist
+        if (analysisResult.matched_jobs && analysisResult.matched_jobs.length > 0) {
+            // Send an intro message for job matches
+            await sendMessage(
+                phoneNumber,
+                "🔍 *MATCHING JOB OPPORTUNITIES* 🔍\n\nI've found some job opportunities that might be a good match for your profile. Here they are:"
+            );
+
+            // Wait before sending detailed job matches
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Send each job match as a separate message to avoid message size limits
+            for (let i = 0; i < Math.min(analysisResult.matched_jobs.length, 5); i++) { // Limit to 5 jobs max
+                const job = analysisResult.matched_jobs[i];
+
+                let jobMessage = `*Job ${i + 1}: ${job.domain || "Unnamed Position"}*\n\n`;
+
+                // Add match assessment if available
+                if (analysisResult.job_analysis && analysisResult.job_analysis[i]) {
+                    // Use the helper function to format job analysis
+                    jobMessage += formatJobAnalysis(analysisResult.job_analysis[i]);
+                }
+
+                // Add job description preview (truncated)
+                if (job.description) {
+                    const descPreview = job.description.substring(0, 150).trim();
+                    jobMessage += "*Description Preview:* ";
+                    jobMessage += descPreview + (job.description.length > 150 ? "..." : "") + "\n\n";
+                }
+
+                // Add application link
+                if (job.application_link) {
+                    jobMessage += `*Apply here:* ${job.application_link}\n`;
+                }
+
+                // Send this job message
+                await sendMessage(phoneNumber, jobMessage);
+
+                // Wait between job messages to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 1500));
+            }
+        } else {
+            // No matching jobs found
+            await sendMessage(
+                phoneNumber,
+                "I couldn't find any matching job opportunities at this time. Please check back later or refine your resume with the suggestions provided."
+            );
+        }
+
+        // Final message asking if they want to analyze another resume
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await sendMessage(
+            phoneNumber,
+            "Would you like to analyze another resume? Reply with 'yes' to proceed or ask me any questions about your analysis."
+        );
+
+        // Update session state
+        userSessions[phoneNumber].state = 'analysis_complete';
+
+    } catch (error) {
+        console.error(`Error sending analysis results: ${error}`);
+        await sendMessage(
+            phoneNumber,
+            "I encountered an error while sending your analysis results. Please try again later."
+        );
+    }
+}
+
+// Function to format job analysis data for WhatsApp message
+// This helper function can make the code more readable
+function formatJobAnalysis(analysis: any): string {
+    let message = "";
+
+    // Match assessment
+    message += "*Match Assessment:*\n";
+    message += `${analysis.match_assessment || "No assessment available"}\n\n`;
+
+    // Matching skills
+    message += "*Key Matching Skills:*\n";
+    if (analysis.matching_skills && analysis.matching_skills.length > 0) {
+        analysis.matching_skills.forEach((skill: string) => {
+            message += `• ${skill}\n`;
+        });
+    } else {
+        message += "• No specific matching skills identified\n";
+    }
+    message += "\n";
+
+    // Missing skills
+    message += "*Missing Skills:*\n";
+    if (analysis.missing_skills && analysis.missing_skills.length > 0) {
+        analysis.missing_skills.forEach((skill: string) => {
+            message += `• ${skill}\n`;
+        });
+    } else {
+        message += "• No specific missing skills identified\n";
+    }
+    message += "\n";
+
+    // Recommended learning
+    message += "*Recommended Learning:*\n";
+    if (analysis.recommended_learning && analysis.recommended_learning.length > 0) {
+        analysis.recommended_learning.forEach((item: string) => {
+            message += `• ${item}\n`;
+        });
+    } else {
+        message += "• No specific learning recommendations\n";
+    }
+
+    return message;
 }
 
 async function downloadMedia(mediaId: string): Promise<Buffer | null> {
