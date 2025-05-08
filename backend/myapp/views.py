@@ -21,6 +21,8 @@ import numpy as np
 import requests
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
+from .models import JobDescription  # Import JobDescription
+
 
 # Initialize the model once at module level
 model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
@@ -458,3 +460,73 @@ def match_candidates_for_job(request):
     except Exception as e:
         print(f"Error matching candidates: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@csrf_exempt
+def upload_job_posting(request):
+    """
+    API endpoint to upload and store job postings in the job_description table
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid request method"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+
+        # Extract job posting data based on the JobDescription model
+        title = data.get('title')
+        description = data.get('description')
+        company = data.get('company')
+        location = data.get('location', '')
+        domain = data.get('domain')
+        salary_range = data.get('salary_range', '')
+        experience_level = data.get('experience_level', '')
+        application_link = data.get('application_link', '')
+
+        # Validate required fields
+        if not all([title, description, company, domain]):
+            return JsonResponse({"error": "Missing required fields"}, status=400)
+
+        # Create and save the job description in the local database
+        job_description = JobDescription.objects.create(
+            title=title,
+            description=description,
+            company=company,
+            location=location,
+            domain=domain,
+            salary_range=salary_range,
+            experience_level=experience_level,
+            application_link=application_link
+        )
+
+        # Generate vector embedding locally using sentence-transformers
+        try:
+            combined_text = f"{title} {company} {description} {domain}"
+            vector = model.encode(combined_text).tolist()
+
+            # Insert into Supabase
+            supabase_client = get_supabase_client()
+            response = supabase_client.table("job_description").insert({
+                "id": str(job_description.id),
+                "title": title,
+                "description": description,
+                "company": company,
+                "location": location,
+                "domain": domain,
+                "salary_range": salary_range,
+                "experience_level": experience_level,
+                "application_link": application_link,
+                "embedding": vector
+            }).execute()
+
+            if hasattr(response, 'error') and response.error:
+                return JsonResponse({"error": f"Supabase insertion error: {response.error}"}, status=500)
+
+            return JsonResponse({"message": "Job posting uploaded successfully", "job_id": job_description.id}, status=201)
+
+        except Exception as e:
+            return JsonResponse({"error": f"Embedding or Supabase error: {str(e)}"}, status=500)
+
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON format"}, status=400)
+    except Exception as e:
+        return JsonResponse({"error": f"Server error: {str(e)}"}, status=500)

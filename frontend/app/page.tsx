@@ -45,6 +45,11 @@ const Page = () => {
           point2="Resume parsing & skill matching"
           point3="Personalized upskilling courses"
           button="Start Your Job Search" />
+        <LoginLink postLoginRedirectURL="/dashboard">
+          <Button className="bg-[#F26430]">
+            Start Your Job Search
+          </Button>
+        </LoginLink>
 
         <Card title="Job Recruiters"
           main_image="/images/recruiter.png"
@@ -55,6 +60,12 @@ const Page = () => {
           point2="Effortless Job Posting"
           point3="Analytics Dashboard"
           button="Post a Job" />
+
+        <LoginLink postLoginRedirectURL="/recruiter">
+          <Button className="bg-[#F26430]">
+          Post a Job
+          </Button>
+        </LoginLink>
       </div>
       <footer className="bg-gray-200 w-full gap-10 mt-10">
         <div className=" grid grid-cols-4 gap-10">

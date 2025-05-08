@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useTheme } from "next-themes";
+import { useSearchParams } from "next/navigation";
 import {
     NavigationMenu,
     NavigationMenuItem,
@@ -32,17 +33,23 @@ import JobPostingForm from "@/components/JobPostingForm";
 const recruiterdashboard = () => {
     const { toast } = useToast();
     const { theme, setTheme } = useTheme();
+    const searchParams = useSearchParams();
+    const tabParam = searchParams.get('tab');
+    
     const [jobDescription, setJobDescription] = useState('');
-    const [matchResult, setMatchResult] = useState<any>(null);
+    const [matchResult, setMatchResult] = useState(null);
     const [isSearching, setIsSearching] = useState(false);
     const [mounted, setMounted] = useState(false);
     const [activeTab, setActiveTab] = useState("candidates");
 
     useEffect(() => {
         setMounted(true);
-    }, []);
-
-    if (!mounted) return null; // Prevents hydration mismatch
+        
+        // Set active tab based on URL parameter if it exists
+        if (tabParam === 'post-job' || tabParam === 'candidates') {
+            setActiveTab(tabParam);
+        }
+    }, [tabParam]);
 
     const handleJobDescriptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setJobDescription(e.target.value);
@@ -110,7 +117,7 @@ const recruiterdashboard = () => {
                         <NavigationMenuList>
                             {["Home", "Dashboard", "Jobs", "Settings"].map((item) => (
                                 <NavigationMenuItem key={item}>
-                                    <Link href={`/${item}`} legacyBehavior passHref>
+                                    <Link href={`/${item.toLowerCase()}`} legacyBehavior passHref>
                                         <NavigationMenuLink className={navigationMenuTriggerStyle()}>{item}</NavigationMenuLink>
                                     </Link>
                                 </NavigationMenuItem>

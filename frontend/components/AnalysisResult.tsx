@@ -59,11 +59,11 @@ const ResumeAnalysisResult: React.FC<AnalysisProps> = ({ analysisResult, handleA
     };
 
     return (
-        <div className="w-full max-w-5xl mx-auto p-4 bg-gradient-to-b from-blue-50 to-white rounded-lg">
+        <div className="w-full max-w-5xl mx-auto p-4 bg-gradient-to-b from-slate-50 to-white rounded-lg">
             <div className="flex justify-center mb-6">
                 <Button 
                     onClick={handleAnalyzeResume} 
-                    className="mt-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-2 rounded-full shadow-lg transition-all duration-300 hover:shadow-xl"
+                    className="mt-4 bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 text-white px-8 py-2 rounded-full shadow-lg transition-all duration-300 hover:shadow-xl"
                 >
                     <FileText className="mr-2 h-5 w-5" />
                     Analyze Resume
@@ -73,43 +73,43 @@ const ResumeAnalysisResult: React.FC<AnalysisProps> = ({ analysisResult, handleA
             {analysisResult && (
                 <div className="mt-6 w-full space-y-8">
                     {/* Basic Analysis Card */}
-                    <Card className="w-full shadow-lg border-t-4 border-blue-500 overflow-hidden transition-all duration-300 hover:shadow-xl">
-                        <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50">
+                    <Card className="w-full shadow-lg border-t-4 border-slate-600 overflow-hidden transition-all duration-300 hover:shadow-xl">
+                        <CardHeader className="bg-gradient-to-r from-slate-100 to-slate-200">
                             <div className="flex items-center">
-                                <FileText className="h-6 w-6 text-blue-600 mr-2" />
+                                <FileText className="h-6 w-6 text-slate-700 mr-2" />
                                 <div>
-                                    <CardTitle className="text-2xl font-bold text-blue-800">Resume Analysis</CardTitle>
-                                    <CardDescription className="text-blue-600">Details from your uploaded resume</CardDescription>
+                                    <CardTitle className="text-2xl font-bold text-slate-800">Resume Analysis</CardTitle>
+                                    <CardDescription className="text-slate-600">Details from your uploaded resume</CardDescription>
                                 </div>
                             </div>
                         </CardHeader>
                         <CardContent className="pt-6">
                             {analysisResult.predicted_job && (
                                 <div className="mb-6 flex items-start">
-                                    <Briefcase className="h-5 w-5 text-blue-500 mr-3 mt-1" />
+                                    <Briefcase className="h-5 w-5 text-slate-600 mr-3 mt-1" />
                                     <div>
-                                        <p className="font-semibold text-gray-700">Predicted Job</p>
-                                        <p className="text-lg text-gray-900">{analysisResult.predicted_job}</p>
+                                        <p className="font-semibold text-slate-700">Predicted Job</p>
+                                        <p className="text-lg text-slate-900">{analysisResult.predicted_job}</p>
                                     </div>
                                 </div>
                             )}
                             
                             {analysisResult.skills && (
                                 <div className="mb-6 flex items-start">
-                                    <Star className="h-5 w-5 text-blue-500 mr-3 mt-1" />
+                                    <Star className="h-5 w-5 text-slate-600 mr-3 mt-1" />
                                     <div>
-                                        <p className="font-semibold text-gray-700">Current Skills</p>
-                                        <p className="text-gray-900">{analysisResult.skills}</p>
+                                        <p className="font-semibold text-slate-700">Current Skills</p>
+                                        <p className="text-slate-900">{analysisResult.skills}</p>
                                     </div>
                                 </div>
                             )}
                             
                             {analysisResult.skills_required && (
                                 <div className="mb-2 flex items-start">
-                                    <Award className="h-5 w-5 text-blue-500 mr-3 mt-1" />
+                                    <Award className="h-5 w-5 text-slate-600 mr-3 mt-1" />
                                     <div>
-                                        <p className="font-semibold text-gray-700">Skills Required</p>
-                                        <p className="text-gray-900">{Array.isArray(analysisResult.skills_required)
+                                        <p className="font-semibold text-slate-700">Skills Required</p>
+                                        <p className="text-slate-900">{Array.isArray(analysisResult.skills_required)
                                             ? analysisResult.skills_required.join(", ")
                                             : analysisResult.skills_required}
                                         </p>
@@ -117,20 +117,20 @@ const ResumeAnalysisResult: React.FC<AnalysisProps> = ({ analysisResult, handleA
                                 </div>
                             )}
                         </CardContent>
-                        <CardFooter className="bg-gray-50 border-t">
-                            <p className="text-sm text-gray-500">Analysis based on your resume content</p>
+                        <CardFooter className="bg-slate-50 border-t">
+                            <p className="text-sm text-slate-500">Analysis based on your resume content</p>
                         </CardFooter>
                     </Card>
 
                     {/* Detailed Job Analysis Card with Markdown */}
                     {hasJobAnalysis && (
-                        <Card className="w-full shadow-lg border-t-4 border-indigo-500 overflow-hidden transition-all duration-300 hover:shadow-xl">
-                            <CardHeader className="bg-gradient-to-r from-indigo-50 to-purple-50">
+                        <Card className="w-full shadow-lg border-t-4 border-gray-600 overflow-hidden transition-all duration-300 hover:shadow-xl">
+                            <CardHeader className="bg-gradient-to-r from-gray-100 to-gray-200">
                                 <div className="flex items-center">
-                                    <CheckCircle2 className="h-6 w-6 text-indigo-600 mr-2" />
+                                    <CheckCircle2 className="h-6 w-6 text-gray-700 mr-2" />
                                     <div>
-                                        <CardTitle className="text-2xl font-bold text-indigo-800">Job Opportunities & Skills Analysis</CardTitle>
-                                        <CardDescription className="text-indigo-600">Detailed breakdown of job matches and skill requirements</CardDescription>
+                                        <CardTitle className="text-2xl font-bold text-gray-800">Job Opportunities & Skills Analysis</CardTitle>
+                                        <CardDescription className="text-gray-600">Detailed breakdown of job matches and skill requirements</CardDescription>
                                     </div>
                                 </div>
                             </CardHeader>
@@ -147,13 +147,13 @@ const ResumeAnalysisResult: React.FC<AnalysisProps> = ({ analysisResult, handleA
 
                     {/* Matched Jobs List */}
                     {hasMatchedJobs && (
-                        <Card className="w-full shadow-lg border-t-4 border-purple-500 overflow-hidden transition-all duration-300 hover:shadow-xl">
-                            <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50">
+                        <Card className="w-full shadow-lg border-t-4 border-stone-600 overflow-hidden transition-all duration-300 hover:shadow-xl">
+                            <CardHeader className="bg-gradient-to-r from-stone-100 to-stone-200">
                                 <div className="flex items-center">
-                                    <Briefcase className="h-6 w-6 text-purple-600 mr-2" />
+                                    <Briefcase className="h-6 w-6 text-stone-700 mr-2" />
                                     <div>
-                                        <CardTitle className="text-2xl font-bold text-purple-800">Matched Job Opportunities</CardTitle>
-                                        <CardDescription className="text-purple-600">Jobs that match your skills and experience</CardDescription>
+                                        <CardTitle className="text-2xl font-bold text-stone-800">Matched Job Opportunities</CardTitle>
+                                        <CardDescription className="text-stone-600">Jobs that match your skills and experience</CardDescription>
                                     </div>
                                 </div>
                             </CardHeader>
@@ -161,16 +161,16 @@ const ResumeAnalysisResult: React.FC<AnalysisProps> = ({ analysisResult, handleA
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {analysisResult.matched_jobs.map((job: any, index: any) => (
                                         <div key={job.job_id || index} className="p-5 border rounded-lg bg-white shadow-md hover:shadow-lg transition-all duration-300">
-                                            <h3 className="font-bold text-lg text-purple-700 mb-2">{job.domain || 'Job Opportunity'}</h3>
+                                            <h3 className="font-bold text-lg text-stone-700 mb-2">{job.domain || 'Job Opportunity'}</h3>
                                             <div className="mt-4 flex justify-between items-center">
                                                 <Button
                                                     onClick={() => handleApplyClick(job)}
-                                                    className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-4 py-1 rounded-full shadow transition-all duration-300"
+                                                    className="bg-gradient-to-r from-stone-600 to-stone-700 hover:from-stone-700 hover:to-stone-800 text-white px-4 py-1 rounded-full shadow transition-all duration-300"
                                                 >
                                                     Apply Now
                                                 </Button>
                                                 {job.similarity && (
-                                                    <div className="text-sm bg-purple-100 text-purple-800 px-3 py-1 rounded-full font-medium">
+                                                    <div className="text-sm bg-stone-100 text-stone-700 px-3 py-1 rounded-full font-medium">
                                                         Match: {Math.round(job.similarity * 100)}%
                                                     </div>
                                                 )}
@@ -179,15 +179,15 @@ const ResumeAnalysisResult: React.FC<AnalysisProps> = ({ analysisResult, handleA
                                     ))}
                                 </div>
                             </CardContent>
-                            <CardFooter className="bg-gray-50 border-t">
-                                <p className="text-sm text-gray-500">Found {analysisResult.matched_jobs.length} matching job opportunities</p>
+                            <CardFooter className="bg-stone-50 border-t">
+                                <p className="text-sm text-stone-500">Found {analysisResult.matched_jobs.length} matching job opportunities</p>
                             </CardFooter>
                         </Card>
                     )}
                 </div>
             )}
 
-            {/* Email Collection Dialog */}
+            {/* Email Collection Dialog
             <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
@@ -237,7 +237,7 @@ const ResumeAnalysisResult: React.FC<AnalysisProps> = ({ analysisResult, handleA
                                 <Button 
                                     onClick={handleEmailSubmit}
                                     disabled={!email || !/\S+@\S+\.\S+/.test(email)}
-                                    className="bg-gradient-to-r from-purple-500 to-pink-500"
+                                    className="bg-gradient-to-r from-slate-600 to-stone-700"
                                 >
                                     Submit
                                 </Button>
@@ -245,7 +245,7 @@ const ResumeAnalysisResult: React.FC<AnalysisProps> = ({ analysisResult, handleA
                         </>
                     )}
                 </DialogContent>
-            </Dialog>
+            </Dialog> */}
         </div>
     );
 };
