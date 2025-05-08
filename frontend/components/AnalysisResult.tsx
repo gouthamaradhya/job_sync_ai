@@ -187,7 +187,7 @@ const ResumeAnalysisResult: React.FC<AnalysisProps> = ({ analysisResult, handleA
                 </div>
             )}
 
-            {/* Email Collection Dialog
+            Email Collection Dialog
             <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
@@ -245,7 +245,7 @@ const ResumeAnalysisResult: React.FC<AnalysisProps> = ({ analysisResult, handleA
                         </>
                     )}
                 </DialogContent>
-            </Dialog> */}
+            </Dialog>
         </div>
     );
 };

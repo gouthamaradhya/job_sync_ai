@@ -15,10 +15,22 @@ interface CardProps {
   point1: string;
   point2: string;
   point3: string;
-  button: string;
+  button?: string;
+  children?: React.ReactNode;
 }
 
-const Card: React.FC<CardProps> = ({ title, main_image, image1, image2, image3, point1, point2, point3, button }) => {
+const Card: React.FC<CardProps> = ({ 
+  title, 
+  main_image, 
+  image1, 
+  image2, 
+  image3, 
+  point1, 
+  point2, 
+  point3, 
+  button, 
+  children 
+}) => {
   const router = useRouter();
   
   const handleButtonClick = () => {
@@ -48,12 +60,16 @@ const Card: React.FC<CardProps> = ({ title, main_image, image1, image2, image3, 
         <p>{point3}</p>
       </div>
       <div className="flex justify-center">
-        <Button 
-          className="bg-[#F26430] hover:bg-[#d55a2b] text-white"
-          onClick={handleButtonClick}
-        >
-          {button}
-        </Button>
+        {children ? (
+          children
+        ) : button ? (
+          <Button 
+            className="bg-[#F26430] hover:bg-[#d55a2b] text-white"
+            onClick={handleButtonClick}
+          >
+            {button}
+          </Button>
+        ) : null}
       </div>
     </div>
   );
