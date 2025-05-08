@@ -465,10 +465,7 @@ async function analyzeResume(filePathOrId: string) {
         console.log(`Analyzing resume: ${filePathOrId}`);
 
         // Call your Django analysis endpoint
-        const response = await axios.post(ANALYZE_ENDPOINT, {
-            file_path: filePathOrId
-        });
-
+        const response = await axios.get(ANALYZE_ENDPOINT);
         if (response.status === 200) {
             console.log('Resume analysis complete');
             return response.data;
