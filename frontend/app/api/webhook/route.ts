@@ -331,44 +331,156 @@ async function sendAnalysisResult(phoneNumber: string, analysis: ResumeAnalysis)
 /**
  * Send WhatsApp message
  */
+// File: app/api/webhook/route.ts
+// ... (other code) ...
+
 async function sendMessage(phoneNumber: string, messageText: string): Promise<boolean> {
     const logger = createLogger('sendMessage');
-    logger.info(`Sending message to ${phoneNumber}: ${messageText.substring(0, 50)}...`);
+    // Limit log preview to avoid overly long log lines, but ensure it's useful.
+    const messagePreview = messageText.length > 100 ? messageText.substring(0, 97) + "..." : messageText;
+    logger.info(`Sending message to ${phoneNumber}: "${messagePreview}" (Length: ${messageText.length})`);
 
     const headers = {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${ENV.WHATSAPP_ACCESS_TOKEN}`
     };
-
     const payload = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
         "to": phoneNumber,
         "type": "text",
-        "text": {
-            "body": messageText
-        }
+        "text": { "preview_url": true, "body": messageText } // Added preview_url: true (good for links)
     };
 
     try {
         const url = `${ENV.WHATSAPP_API_URL}/${ENV.WHATSAPP_PHONE_NUMBER_ID}/messages`;
-        logger.info(`Sending message to WhatsApp API: ${url}`);
-
+        // logger.info(`Sending message to WhatsApp API: ${url}`); // Already logged in previous turn
         const response = await axios.post(url, payload, { headers });
 
-        if (response.status !== 200) {
-            logger.error(`Error sending message: ${response.status}, ${JSON.stringify(response.data)}`);
+        if (response.status !== 200) { // Should be 200 for success
+            logger.error(`Error sending message: WhatsApp API responded with ${response.status}, Data: ${JSON.stringify(response.data)}`);
             return false;
         }
-
-        logger.info(`Message sent successfully to ${phoneNumber}`);
+        logger.info(`Message sent successfully to ${phoneNumber}. Message ID: ${response.data?.messages?.[0]?.id || 'N/A'}`);
         return true;
-
     } catch (error) {
-        logger.error(`Error sending message: ${error instanceof Error ? error.message : String(error)}`);
+        let errorMessage = "Unknown error during sendMessage";
+        if (axios.isAxiosError(error)) {
+            errorMessage = error.message;
+            if (error.response) {
+                // THIS IS THE CRUCIAL LOG FOR 400 ERRORS
+                logger.error(`Error sending message: API Error ${error.response.status} - Data: ${JSON.stringify(error.response.data)}`);
+                errorMessage = `API Error ${error.response.status}: ${JSON.stringify(error.response.data)}`;
+            } else if (error.request) {
+                logger.error(`Error sending message: No response received. Request: ${JSON.stringify(error.request)}`);
+                errorMessage = "No response from API.";
+            } else {
+                logger.error(`Error sending message: Axios error setup. ${error.message}`);
+            }
+        } else if (error instanceof Error) {
+            errorMessage = error.message;
+            logger.error(`Error sending message (non-Axios): ${errorMessage}`);
+        } else {
+            logger.error(`Error sending message (unknown type): ${String(error)}`);
+        }
         return false;
     }
 }
+
+
+const WHATSAPP_MAX_MESSAGE_LENGTH = 4096; // Maximum characters for a WhatsApp message
+
+/**
+ * Splits a long message into parts suitable for WhatsApp, attempting to preserve readability.
+ */
+function splitMessageIntoParts(fullMessage: string, maxLength: number, logger: ReturnType<typeof createLogger>): string[] {
+    const parts: string[] = [];
+    if (!fullMessage) {
+        return parts;
+    }
+
+    if (fullMessage.length <= maxLength) {
+        parts.push(fullMessage);
+        return parts;
+    }
+
+    logger.info(`Original message length ${fullMessage.length} exceeds ${maxLength}, splitting.`);
+    let currentOffset = 0;
+    while (currentOffset < fullMessage.length) {
+        let endIndex = Math.min(currentOffset + maxLength, fullMessage.length);
+        if (endIndex < fullMessage.length) { // If not the last part, try to find a good split point
+            let splitAt = -1;
+            // Try to split at the last double newline within the current chunk
+            let tempSplitAt = fullMessage.substring(currentOffset, endIndex).lastIndexOf("\n\n");
+            if (tempSplitAt > 0) {
+                splitAt = currentOffset + tempSplitAt + 2; // Include the newlines in the split
+            } else {
+                // Try to split at the last single newline
+                tempSplitAt = fullMessage.substring(currentOffset, endIndex).lastIndexOf("\n");
+                if (tempSplitAt > 0) {
+                    splitAt = currentOffset + tempSplitAt + 1; // Include the newline
+                } else {
+                    // Try to split at the last space
+                    tempSplitAt = fullMessage.substring(currentOffset, endIndex).lastIndexOf(" ");
+                    if (tempSplitAt > 0) {
+                        splitAt = currentOffset + tempSplitAt + 1; // Include the space
+                    }
+                }
+            }
+
+            if (splitAt > currentOffset && splitAt < endIndex) { // If a good split point is found
+                endIndex = splitAt;
+            } else if (endIndex === fullMessage.length) { // Reached the end
+                // No action needed, will take full remaining string
+            } else {
+                // If no good split point, hard split at maxLength (already set by default endIndex)
+                logger.warn(`Hard-splitting a message part as no good boundary (newline/space) was found near char ${endIndex} for part starting at ${currentOffset}.`);
+            }
+        }
+        parts.push(fullMessage.substring(currentOffset, endIndex).trim());
+        currentOffset = endIndex;
+    }
+    return parts.filter(part => part.length > 0); // Remove any empty parts that might result from trimming
+}
+
+async function sendMultiPartMessage(phoneNumber: string, fullMessage: string, logger: ReturnType<typeof createLogger>): Promise<boolean> {
+    const messageParts = splitMessageIntoParts(fullMessage, WHATSAPP_MAX_MESSAGE_LENGTH, logger);
+
+    if (messageParts.length === 0 && fullMessage.length > 0) {
+        logger.error("Splitting resulted in no parts for a non-empty message. This should not happen.");
+        return false; // Indicates an issue with splitting logic or empty message.
+    }
+    if (messageParts.length === 0 && fullMessage.length === 0) {
+        return true; // Sending an empty message is vacuously successful.
+    }
+
+
+    for (let i = 0; i < messageParts.length; i++) {
+        const part = messageParts[i];
+        let messageWithPager = part;
+        if (messageParts.length > 1) {
+            const pager = `(Part ${i + 1}/${messageParts.length})\n`;
+            // Only add pager if it fits, otherwise send part as is.
+            if ((pager.length + part.length) <= WHATSAPP_MAX_MESSAGE_LENGTH) {
+                messageWithPager = pager + part;
+            } else {
+                logger.warn(`Pager for part ${i + 1} makes it too long, sending without pager.`);
+            }
+        }
+
+        if (!await sendMessage(phoneNumber, messageWithPager)) {
+            logger.error(`Failed to send part ${i + 1}/${messageParts.length} of multi-part message to ${phoneNumber}.`);
+            return false; // Stop sending further parts if one fails
+        }
+        // Optional: Add a small delay between messages if sending multiple parts
+        if (i < messageParts.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 750)); // 0.75 second delay
+        }
+    }
+    return true;
+}
+
+
 async function sendDetailedJobAnalysisMessage(phoneNumber: string, analysis: ResumeAnalysis): Promise<void> {
     const logger = createLogger('sendDetailedJobAnalysis');
     let jobsMessage = "📄 *Detailed Job Analysis* 📄\n\n";
@@ -379,11 +491,9 @@ async function sendDetailedJobAnalysisMessage(phoneNumber: string, analysis: Res
         if (parsedDetailedJobs.length > 0) {
             foundDetailedJobs = true;
             parsedDetailedJobs.forEach((jobDetail, index) => {
-                // Try to find the original matched job for application link, similarity score, and original title (domain)
                 const originalMatchedJob = analysis.matched_jobs?.find(
-                    mj => mj.job_id === jobDetail.job_id || mj.domain === jobDetail.title // Match by ID or title
+                    mj => mj.job_id === jobDetail.job_id || mj.domain === jobDetail.title
                 );
-
                 const title = originalMatchedJob?.domain || jobDetail.title;
                 const similarityPercentage = originalMatchedJob?.similarity ? Math.round(originalMatchedJob.similarity * 100) : null;
 
@@ -392,7 +502,6 @@ async function sendDetailedJobAnalysisMessage(phoneNumber: string, analysis: Res
                     jobsMessage += `  Match Score: ${similarityPercentage}%\n`;
                 }
                 jobsMessage += `  Assessment: ${jobDetail.match.assessment} (Level: ${jobDetail.match.level})\n`;
-
                 if (jobDetail.skills.matching.length > 0) {
                     jobsMessage += `  Matching Skills: _${jobDetail.skills.matching.join(', ')}_\n`;
                 }
@@ -411,8 +520,6 @@ async function sendDetailedJobAnalysisMessage(phoneNumber: string, analysis: Res
     }
 
     if (!foundDetailedJobs) {
-        // Fallback if job_analysis (markdown) isn't there or yielded no jobs,
-        // but matched_jobs might still exist from the summary.
         if (analysis.matched_jobs && analysis.matched_jobs.length > 0) {
             jobsMessage += "A summary of matched jobs was previously sent. The more detailed text-based analysis for each job is not available or couldn't be parsed.\nHere's the summary again:\n\n";
             analysis.matched_jobs.slice(0, 3).forEach((job, i) => {
@@ -420,15 +527,23 @@ async function sendDetailedJobAnalysisMessage(phoneNumber: string, analysis: Res
                 jobsMessage += `${i + 1}. ${job.domain} (${matchPercentage}% match)\n`;
                 if (job.application_link) jobsMessage += `   Link: ${job.application_link}\n`;
             });
-
         } else {
             jobsMessage += "No detailed job analysis data or matched jobs were found in your report.\n";
         }
     }
 
-    await sendMessage(phoneNumber, jobsMessage);
-    logger.info(`Sent detailed job analysis to ${phoneNumber}`);
-    await sendMessage(phoneNumber, "You can say 'hi' to analyze another resume, or ask other questions if supported.");
+    // logger.info(`Constructed jobsMessage (length: ${jobsMessage.length}):\n${jobsMessage}`); // Log the full message if needed for debugging, be mindful of log limits
+
+    const mainMessageSent = await sendMultiPartMessage(phoneNumber, jobsMessage, logger);
+
+    if (mainMessageSent) {
+        logger.info(`All parts of detailed job analysis sent to ${phoneNumber}`);
+        await sendMessage(phoneNumber, "You can say 'hi' to analyze another resume, or ask other questions if supported.");
+    } else {
+        logger.error(`Failed to send complete detailed job analysis to ${phoneNumber}. Not sending follow-up message.`);
+        // Optionally, send a generic error message to the user if the main analysis failed.
+        // await sendMessage(phoneNumber, "Sorry, I couldn't send the detailed job analysis due to an issue. Please try again later.");
+    }
 }
 /**
  * Upload resume to backend service
