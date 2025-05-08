@@ -1,161 +1,269 @@
 // File: app/api/webhook/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import axios from 'axios';
+import axios, { AxiosResponse } from 'axios';
 
-// Environment variables (to be replaced with ngrok URLs in production)
-const UPLOAD_ENDPOINT = process.env.UPLOAD_ENDPOINT || 'http://localhost:8000/upload_resume/';
-const ANALYZE_ENDPOINT = process.env.ANALYZE_ENDPOINT || 'http://localhost:8000/analyze-resume';
-const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
-const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
-const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
-const WHATSAPP_API_URL = 'https://graph.facebook.com/v18.0';
+// Environment variables configuration
+const ENV = {
+    UPLOAD_ENDPOINT: process.env.UPLOAD_ENDPOINT || 'http://localhost:8000/upload_resume/',
+    ANALYZE_ENDPOINT: process.env.ANALYZE_ENDPOINT || 'http://localhost:8000/analyze-resume',
+    WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN,
+    WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN,
+    WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID,
+    WHATSAPP_API_URL: 'https://graph.facebook.com/v18.0'
+};
 
-// Simple in-memory store for user sessions
-// In production, use a database or Redis
+// Type definitions
 interface UserSession {
-    state: string;
+    state: 'new' | 'awaiting_confirmation' | 'awaiting_resume' | 'analysis_complete';
     [key: string]: any;
 }
 
-// Note: This is not ideal for production as it will reset on server restarts
-// Use a database or Redis in production
+interface WhatsAppContact {
+    wa_id: string;
+    [key: string]: any;
+}
+
+interface WhatsAppMessage {
+    id: string;
+    from: string;
+    timestamp: string;
+    text?: { body: string };
+    image?: { id: string; mime_type?: string };
+    document?: { id: string; mime_type?: string; filename?: string };
+    [key: string]: any;
+}
+
+interface WhatsAppValue {
+    messaging_product: string;
+    metadata: { display_phone_number: string; phone_number_id: string };
+    contacts: WhatsAppContact[];
+    messages: WhatsAppMessage[];
+}
+
+interface WebhookEntry {
+    id: string;
+    changes: {
+        value: WhatsAppValue;
+        field: string;
+    }[];
+}
+
+interface WebhookEvent {
+    object: string;
+    entry: WebhookEntry[];
+}
+
+interface UploadResponse {
+    success: boolean;
+    filePath?: string;
+    error?: string;
+}
+
+interface MatchedJob {
+    job_id: string;
+    domain: string;
+    similarity: number;
+    application_link?: string;
+    description?: string;
+}
+
+interface ResumeAnalysis {
+    skills: string[];
+    experience_years?: number;
+    education?: string;
+    missing_keywords: string[];
+    improvement_suggestions: string[];
+    matched_jobs: MatchedJob[];
+    job_analysis?: string;
+}
+
+interface JobAnalysis {
+    job_id: string;
+    title: string;
+    match: {
+        level: 'High' | 'Moderate' | 'Low';
+        assessment: string;
+    };
+    skills: {
+        matching: string[];
+        missing: string[];
+    };
+    learning_recommendations: string[];
+}
+
+interface WebhookResponse {
+    success: boolean;
+    timestamp: string;
+    data: {
+        skills: string[];
+        experience_years: number | null;
+        education: string | null;
+        missing_keywords: string[];
+        improvement_suggestions: string[];
+        matched_jobs: any[];
+        job_analysis?: JobAnalysis[];
+    };
+    error?: string;
+}
+
+// In-memory session store (use Redis or database in production)
 const userSessions: Record<string, UserSession> = {};
 
-// GET handler for webhook verification
+/**
+ * GET handler for webhook verification
+ */
 export async function GET(request: NextRequest) {
-    console.log("Processing webhook verification request");
+    const logger = createLogger('GET webhook verification');
+    logger.info("Processing webhook verification request");
 
     const searchParams = request.nextUrl.searchParams;
     const mode = searchParams.get('hub.mode');
     const token = searchParams.get('hub.verify_token');
     const challenge = searchParams.get('hub.challenge');
 
-    console.log(`Verification params - Mode: ${mode}, Token: ${token ? '*'.repeat(token.length) : 'none'}, Challenge: ${challenge}`);
+    logger.info(`Verification params - Mode: ${mode}, Token: ${token ? '*****' : 'none'}, Challenge: ${challenge}`);
 
-    if (mode && token) {
-        if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-            console.log("Webhook verified successfully!");
-            return new NextResponse(challenge, { status: 200 });
-        } else {
-            console.warn("Failed webhook verification - invalid token or mode");
-            return new NextResponse(null, { status: 403 }); // Forbidden
-        }
+    if (!mode || !token) {
+        logger.warn("Bad verification request - missing parameters");
+        return new NextResponse(null, { status: 400 }); // Bad request
     }
 
-    console.warn("Bad verification request - missing parameters");
-    return new NextResponse(null, { status: 400 }); // Bad request
+    if (mode === 'subscribe' && token === ENV.WHATSAPP_VERIFY_TOKEN) {
+        logger.info("Webhook verified successfully!");
+        return new NextResponse(challenge, { status: 200 });
+    }
+
+    logger.warn("Failed webhook verification - invalid token or mode");
+    return new NextResponse(null, { status: 403 }); // Forbidden
 }
 
-// POST handler for incoming messages
+/**
+ * POST handler for incoming messages
+ */
 export async function POST(request: NextRequest) {
-    try {
-        // Log request headers for debugging
-        console.log(`Headers: ${JSON.stringify(Object.fromEntries(request.headers))}`);
+    const logger = createLogger('POST webhook');
 
+    try {
         // Parse the request body
-        const data = await request.json();
-        console.log(`Received webhook data: ${JSON.stringify(data).substring(0, 500)}...`);
+        const data: WebhookEvent = await request.json();
+        logger.info(`Received webhook data: ${JSON.stringify(data).substring(0, 200)}...`);
 
         // Check if this is a WhatsApp Business API message
         if (data.object === 'whatsapp_business_account') {
             for (const entry of data.entry || []) {
                 for (const change of entry.changes || []) {
-                    if (change.field === 'messages') {
-                        if (change.value?.messages) {
-                            await processMessage(change.value);
-                        }
+                    if (change.field === 'messages' && change.value?.messages?.length > 0) {
+                        await processMessage(change.value);
                     }
                 }
             }
         }
 
         return new NextResponse(null, { status: 200 });
-    } catch (e) {
-        console.error(`Error processing message: ${e}`);
+    } catch (error) {
+        logger.error(`Error processing webhook: ${error instanceof Error ? error.message : String(error)}`);
         return new NextResponse(null, { status: 500 });
     }
 }
 
-async function processMessage(value: any) {
+/**
+ * Process an incoming WhatsApp message
+ */
+async function processMessage(value: WhatsAppValue): Promise<void> {
+    const logger = createLogger('processMessage');
+
     try {
-        // Extract message information
         const message = value.messages[0];
         const messageId = message.id;
         const phoneNumber = value.contacts[0].wa_id;
 
-        console.log(`Processing message from ${phoneNumber}, message_id: ${messageId}`);
+        logger.info(`Processing message from ${phoneNumber}, message_id: ${messageId}`);
 
-        // Track user session
+        // Initialize user session if it doesn't exist
         if (!userSessions[phoneNumber]) {
             userSessions[phoneNumber] = { state: 'new' };
-            console.log(`New user session created for ${phoneNumber}`);
+            logger.info(`New user session created for ${phoneNumber}`);
         }
 
-        // Handle message based on type
+        // Handle different message types
         if (message.text) {
             const textContent = message.text.body;
-            console.log(`Received text message: ${textContent}`);
+            logger.info(`Received text message: ${textContent}`);
             await handleTextMessage(phoneNumber, textContent);
-        } else if (message.image) {
-            console.log(`Received image message from ${phoneNumber}`);
-            await handleFileMessage(phoneNumber, message);
-        } else if (message.document) {
-            console.log(`Received document message from ${phoneNumber}`);
+        } else if (message.image || message.document) {
+            logger.info(`Received ${message.image ? 'image' : 'document'} message from ${phoneNumber}`);
             await handleFileMessage(phoneNumber, message);
         } else {
-            // Handle other message types
-            console.log(`Received unsupported message type from ${phoneNumber}`);
+            // Unsupported message type
+            logger.info(`Received unsupported message type from ${phoneNumber}`);
             await sendMessage(phoneNumber, "I can only process text messages and files. Please send a message or your resume.");
         }
-    } catch (e) {
-        console.error(`Error in processMessage: ${e}`);
+    } catch (error) {
+        logger.error(`Error in processMessage: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
 
-async function handleTextMessage(phoneNumber: string, messageText: string) {
+/**
+ * Handle text messages based on user state
+ */
+async function handleTextMessage(phoneNumber: string, messageText: string): Promise<void> {
+    const logger = createLogger('handleTextMessage');
     messageText = messageText.toLowerCase().trim();
-    const userState = userSessions[phoneNumber].state;
+    const session = userSessions[phoneNumber];
 
-    console.log(`Handling text message '${messageText}' from ${phoneNumber} (state: ${userState})`);
+    logger.info(`Handling text message '${messageText}' from ${phoneNumber} (state: ${session.state})`);
 
-    if (messageText === 'hi' || messageText === 'hello') {
+    switch (true) {
         // Welcome message
-        await sendMessage(
-            phoneNumber,
-            "👋 Welcome to Job Sync AI!\n\n" +
-            "I can help analyze your resume and provide personalized feedback. " +
-            "Would you like to upload your resume now? (Reply with 'yes' to proceed)"
-        );
-        userSessions[phoneNumber].state = 'awaiting_confirmation';
-    } else if (userState === 'awaiting_confirmation' && (messageText === 'yes' || messageText === 'y')) {
-        // Prompt for resume upload
-        await sendMessage(
-            phoneNumber,
-            "Great! Please upload your resume as a PDF or image file."
-        );
-        userSessions[phoneNumber].state = 'awaiting_resume';
-    } else if (userState === 'analysis_complete') {
-        // After analysis is complete, reset state if user sends another message
-        await sendMessage(
-            phoneNumber,
-            "Do you want to analyze another resume? Reply with 'yes' to proceed."
-        );
-        userSessions[phoneNumber].state = 'awaiting_confirmation';
-    } else {
+        case messageText === 'hi' || messageText === 'hello':
+            await sendMessage(
+                phoneNumber,
+                "👋 Welcome to Job Sync AI!\n\n" +
+                "I can help analyze your resume and provide personalized feedback. " +
+                "Would you like to upload your resume now? (Reply with 'yes' to proceed)"
+            );
+            session.state = 'awaiting_confirmation';
+            break;
+
+        // Resume upload prompt
+        case session.state === 'awaiting_confirmation' && (messageText === 'yes' || messageText === 'y'):
+            await sendMessage(
+                phoneNumber,
+                "Great! Please upload your resume as a PDF or image file."
+            );
+            session.state = 'awaiting_resume';
+            break;
+
+        // Analysis completed, user wants to analyze another resume
+        case session.state === 'analysis_complete':
+            await sendMessage(
+                phoneNumber,
+                "Do you want to analyze another resume? Reply with 'yes' to proceed."
+            );
+            session.state = 'awaiting_confirmation';
+            break;
+
         // Default response
-        await sendMessage(
-            phoneNumber,
-            "I'm here to help analyze your resume. Say 'hi' to start over, or upload your resume if you're ready."
-        );
+        default:
+            await sendMessage(
+                phoneNumber,
+                "I'm here to help analyze your resume. Say 'hi' to start over, or upload your resume if you're ready."
+            );
+            break;
     }
 }
 
-async function handleFileMessage(phoneNumber: string, message: any) {
-    const userState = userSessions[phoneNumber].state;
-    console.log(`Handling file message from ${phoneNumber} (state: ${userState})`);
+/**
+ * Handle file messages (resume uploads)
+ */
+async function handleFileMessage(phoneNumber: string, message: WhatsAppMessage): Promise<void> {
+    const logger = createLogger('handleFileMessage');
+    const session = userSessions[phoneNumber];
+
+    logger.info(`Handling file message from ${phoneNumber} (state: ${session.state})`);
 
     // Check if we're expecting a resume
-    if (userState !== 'awaiting_resume' && userState !== 'analysis_complete') {
+    if (session.state !== 'awaiting_resume' && session.state !== 'analysis_complete') {
         await sendMessage(
             phoneNumber,
             "I wasn't expecting a file yet. Please say 'hi' to start the resume analysis process."
@@ -163,328 +271,247 @@ async function handleFileMessage(phoneNumber: string, message: any) {
         return;
     }
 
-    // Determine file type
-    let fileType = null;
-    let mediaId = null;
+    // Determine file type and media ID
+    let mediaId: string | null = null;
+    let fileType: 'image' | 'document' | null = null;
 
     if (message.image) {
         fileType = 'image';
         mediaId = message.image.id;
-        console.log(`Received image with media ID: ${mediaId}`);
+        logger.info(`Received image with media ID: ${mediaId}`);
     } else if (message.document) {
         fileType = 'document';
         mediaId = message.document.id;
-        const mimeType = message.document.mime_type || 'unknown';
-        console.log(`Received document with media ID: ${mediaId}, mime_type: ${mimeType}`);
+        logger.info(`Received document with media ID: ${mediaId}, mime_type: ${message.document.mime_type || 'unknown'}`);
     }
 
-    if (mediaId) {
-        // Download the file
-        await sendMessage(phoneNumber, "Downloading your resume... Please wait.");
-        const fileData = await downloadMedia(mediaId);
-
-        if (fileData) {
-            console.log(`Successfully downloaded media with ID ${mediaId}`);
-            // Process the resume
-            await sendMessage(phoneNumber, "Analyzing your resume... This may take a moment.");
-
-            try {
-                // Upload to your backend service
-                const uploadResponse = await uploadResume(fileData, mediaId);
-
-                if (uploadResponse.success) {
-                    // Now analyze the resume
-                    const analysisResult = await analyzeResume(uploadResponse.filePath);
-
-                    if (analysisResult) {
-                        console.log(`Analysis complete for ${phoneNumber}`);
-
-                        // Format and send the analysis
-                        await sendAnalysisResult(phoneNumber, analysisResult);
-                        userSessions[phoneNumber].state = 'analysis_complete';
-                    } else {
-                        await sendMessage(
-                            phoneNumber,
-                            "I encountered an error while analyzing your resume. Please try uploading it again."
-                        );
-                    }
-                } else {
-                    await sendMessage(
-                        phoneNumber,
-                        "I couldn't upload your resume. Please try again."
-                    );
-                }
-            } catch (e) {
-                console.error(`Error analyzing resume: ${e}`);
-                await sendMessage(
-                    phoneNumber,
-                    "I encountered an error while analyzing your resume. Please try uploading it again."
-                );
-            }
-        } else {
-            console.error(`Failed to download media with ID ${mediaId}`);
-            await sendMessage(
-                phoneNumber,
-                "I couldn't download your file. Please try uploading it again."
-            );
-        }
-    } else {
-        console.warn(`Could not determine media ID from message`);
+    if (!mediaId) {
+        logger.warn(`Could not determine media ID from message`);
         await sendMessage(
             phoneNumber,
             "I couldn't process your file. Please upload a PDF or image file of your resume."
         );
+        return;
     }
-}
 
-
-async function sendAnalysisResult(phoneNumber: string, analysisResult: any) {
-    console.log(`Sending analysis results to ${phoneNumber}`);
-
+    // Process the resume
     try {
-        // First, send the resume analysis message
-        let analysisMessage = "📊 *YOUR RESUME ANALYSIS* 📊\n\n";
+        // Download step
+        await sendMessage(phoneNumber, "Downloading your resume... Please wait.");
+        const fileData = await downloadMedia(mediaId);
 
-        // Add skills section
-        analysisMessage += "*Skills Identified:*\n";
-        const skills = analysisResult.skills?.join(", ") || "No specific skills identified";
-        analysisMessage += `• ${skills}\n\n`;
-
-        // Experience and education
-        analysisMessage += `*Experience:* ${analysisResult.experience_years || "Not specified"} years\n`;
-        analysisMessage += `*Education:* ${analysisResult.education || "Not specified"}\n\n`;
-
-        // Missing keywords
-        analysisMessage += "*Missing Keywords:*\n";
-        const missing = analysisResult.missing_keywords?.join(", ") || "None";
-        analysisMessage += `• ${missing}\n\n`;
-
-        // Improvement suggestions
-        analysisMessage += "*Suggestions for Improvement:*\n";
-        if (analysisResult.improvement_suggestions && analysisResult.improvement_suggestions.length > 0) {
-            analysisResult.improvement_suggestions.forEach((suggestion: string, idx: number) => {
-                analysisMessage += `${idx + 1}. ${suggestion}\n`;
-            });
-        } else {
-            analysisMessage += "• No specific suggestions at this time\n";
+        if (!fileData) {
+            throw new Error(`Failed to download media with ID ${mediaId}`);
         }
 
-        // Send the analysis message
-        await sendMessage(phoneNumber, analysisMessage);
+        logger.info(`Successfully downloaded media with ID ${mediaId}`);
 
-        // Wait a moment before sending job matches to avoid message rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Upload step
+        await sendMessage(phoneNumber, "Analyzing your resume... This may take a moment.");
+        const uploadResponse = await uploadResume(fileData, mediaId);
 
-        // Now handle job matches if they exist
-        if (analysisResult.matched_jobs && analysisResult.matched_jobs.length > 0) {
-            // Send an intro message for job matches
-            await sendMessage(
-                phoneNumber,
-                "🔍 *MATCHING JOB OPPORTUNITIES* 🔍\n\nI've found some job opportunities that might be a good match for your profile. Here they are:"
-            );
-
-            // Wait before sending detailed job matches
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            // Send each job match as a separate message to avoid message size limits
-            for (let i = 0; i < Math.min(analysisResult.matched_jobs.length, 5); i++) { // Limit to 5 jobs max
-                const job = analysisResult.matched_jobs[i];
-
-                let jobMessage = `*Job ${i + 1}: ${job.domain || "Unnamed Position"}*\n\n`;
-
-                // Add match assessment if available
-                if (analysisResult.job_analysis && analysisResult.job_analysis[i]) {
-                    // Use the helper function to format job analysis
-                    jobMessage += formatJobAnalysis(analysisResult.job_analysis[i]);
-                }
-
-                // Add job description preview (truncated)
-                if (job.description) {
-                    const descPreview = job.description.substring(0, 150).trim();
-                    jobMessage += "*Description Preview:* ";
-                    jobMessage += descPreview + (job.description.length > 150 ? "..." : "") + "\n\n";
-                }
-
-                // Add application link
-                if (job.application_link) {
-                    jobMessage += `*Apply here:* ${job.application_link}\n`;
-                }
-
-                // Send this job message
-                await sendMessage(phoneNumber, jobMessage);
-
-                // Wait between job messages to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 1500));
-            }
-        } else {
-            // No matching jobs found
-            await sendMessage(
-                phoneNumber,
-                "I couldn't find any matching job opportunities at this time. Please check back later or refine your resume with the suggestions provided."
-            );
+        if (!uploadResponse.success) {
+            throw new Error("Resume upload failed");
         }
 
-        // Final message asking if they want to analyze another resume
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        await sendMessage(
-            phoneNumber,
-            "Would you like to analyze another resume? Reply with 'yes' to proceed or ask me any questions about your analysis."
-        );
+        // Analysis step
+        const analysisResult = await analyzeResume(uploadResponse.filePath!);
 
-        // Update session state
-        userSessions[phoneNumber].state = 'analysis_complete';
+        if (!analysisResult) {
+            throw new Error("Resume analysis failed");
+        }
+
+        logger.info(`Analysis complete for ${phoneNumber}`);
+
+        // Send analysis results
+        await sendAnalysisResult(phoneNumber, analysisResult);
+        session.state = 'analysis_complete';
 
     } catch (error) {
-        console.error(`Error sending analysis results: ${error}`);
+        logger.error(`Error processing resume: ${error instanceof Error ? error.message : String(error)}`);
         await sendMessage(
             phoneNumber,
-            "I encountered an error while sending your analysis results. Please try again later."
+            "I encountered an error while processing your resume. Please try uploading it again."
         );
     }
 }
 
-// Function to format job analysis data for WhatsApp message
-// This helper function can make the code more readable
-function formatJobAnalysis(analysis: any): string {
-    let message = "";
-
-    // Match assessment
-    message += "*Match Assessment:*\n";
-    message += `${analysis.match_assessment || "No assessment available"}\n\n`;
-
-    // Matching skills
-    message += "*Key Matching Skills:*\n";
-    if (analysis.matching_skills && analysis.matching_skills.length > 0) {
-        analysis.matching_skills.forEach((skill: string) => {
-            message += `• ${skill}\n`;
-        });
-    } else {
-        message += "• No specific matching skills identified\n";
-    }
-    message += "\n";
-
-    // Missing skills
-    message += "*Missing Skills:*\n";
-    if (analysis.missing_skills && analysis.missing_skills.length > 0) {
-        analysis.missing_skills.forEach((skill: string) => {
-            message += `• ${skill}\n`;
-        });
-    } else {
-        message += "• No specific missing skills identified\n";
-    }
-    message += "\n";
-
-    // Recommended learning
-    message += "*Recommended Learning:*\n";
-    if (analysis.recommended_learning && analysis.recommended_learning.length > 0) {
-        analysis.recommended_learning.forEach((item: string) => {
-            message += `• ${item}\n`;
-        });
-    } else {
-        message += "• No specific learning recommendations\n";
-    }
-
-    return message;
-}
-
+/**
+ * Download media from WhatsApp API
+ */
 async function downloadMedia(mediaId: string): Promise<Buffer | null> {
+    const logger = createLogger('downloadMedia');
+
     try {
-        console.log(`Attempting to download media with ID: ${mediaId}`);
+        logger.info(`Attempting to download media with ID: ${mediaId}`);
 
         // Get media URL
         const headers = {
-            "Authorization": `Bearer ${ACCESS_TOKEN}`
+            "Authorization": `Bearer ${ENV.WHATSAPP_ACCESS_TOKEN}`
         };
-        const url = `${WHATSAPP_API_URL}/${mediaId}`;
+        const url = `${ENV.WHATSAPP_API_URL}/${mediaId}`;
 
-        console.log(`Requesting media URL from: ${url}`);
+        logger.info(`Requesting media URL from: ${url}`);
         const response = await axios.get(url, { headers });
 
-        if (response.status === 200) {
-            const mediaData = response.data;
-            const mediaUrl = mediaData.url;
-
-            console.log(`Got media URL: ${mediaUrl.substring(0, 50)}...`);
-
-            // Download the file
-            const mediaResponse = await axios.get(mediaUrl, {
-                headers,
-                responseType: 'arraybuffer'
-            });
-
-            if (mediaResponse.status === 200) {
-                console.log(`Downloaded media content, size: ${mediaResponse.data.length} bytes`);
-                return Buffer.from(mediaResponse.data);
-            } else {
-                console.error(`Failed to download media content: ${mediaResponse.status}, ${mediaResponse.statusText}`);
-            }
-        } else {
-            console.error(`Failed to get media URL: ${response.status}, ${response.statusText}`);
+        if (response.status !== 200) {
+            logger.error(`Failed to get media URL: ${response.status}, ${response.statusText}`);
+            return null;
         }
-    } catch (e) {
-        console.error(`Error downloading media: ${e}`);
-    }
 
-    return null;
+        const mediaData = response.data;
+        const mediaUrl = mediaData.url;
+
+        logger.info(`Got media URL: ${mediaUrl.substring(0, 50)}...`);
+
+        // Download the file
+        const mediaResponse = await axios.get(mediaUrl, {
+            headers,
+            responseType: 'arraybuffer'
+        });
+
+        if (mediaResponse.status !== 200) {
+            logger.error(`Failed to download media content: ${mediaResponse.status}, ${mediaResponse.statusText}`);
+            return null;
+        }
+
+        logger.info(`Downloaded media content, size: ${mediaResponse.data.length} bytes`);
+        return Buffer.from(mediaResponse.data);
+
+    } catch (error) {
+        logger.error(`Error downloading media: ${error instanceof Error ? error.message : String(error)}`);
+        return null;
+    }
 }
 
-async function uploadResume(fileData: Buffer, mediaId: string) {
+/**
+ * Upload resume to backend service
+ */
+async function uploadResume(fileData: Buffer, mediaId: string): Promise<UploadResponse> {
+    const logger = createLogger('uploadResume');
+
     try {
-        console.log(`Uploading resume with mediaId: ${mediaId}`);
+        logger.info(`Uploading resume with mediaId: ${mediaId}`);
 
         // Create FormData for file upload
         const formData = new FormData();
         const blob = new Blob([fileData], { type: 'application/octet-stream' });
         formData.append('file', blob, `resume_${mediaId}.pdf`);
 
-        // Upload to your Django backend
-        const response = await axios.post(UPLOAD_ENDPOINT, formData, {
+        // Upload to backend
+        const response = await axios.post(ENV.UPLOAD_ENDPOINT, formData, {
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
         });
 
-        if (response.status === 200 || response.status === 201) {
-            console.log('Resume uploaded successfully');
-            return {
-                success: true,
-                filePath: response.data.file_path || mediaId
-            };
-        } else {
-            console.error(`Failed to upload resume: ${response.status}, ${response.statusText}`);
-            return { success: false };
+        if (response.status !== 200 && response.status !== 201) {
+            logger.error(`Failed to upload resume: ${response.status}, ${response.statusText}`);
+            return { success: false, error: `Upload failed with status ${response.status}` };
         }
-    } catch (e) {
-        console.error(`Error uploading resume: ${e}`);
-        return { success: false };
+
+        logger.info('Resume uploaded successfully');
+        return {
+            success: true,
+            filePath: response.data.file_path || mediaId
+        };
+
+    } catch (error) {
+        logger.error(`Error uploading resume: ${error instanceof Error ? error.message : String(error)}`);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown upload error'
+        };
     }
 }
 
-async function analyzeResume(filePathOrId: string) {
-    try {
-        console.log(`Analyzing resume: ${filePathOrId}`);
+/**
+ * Analyze resume using backend service
+ */
+async function analyzeResume(filePathOrId: string): Promise<ResumeAnalysis | null> {
+    const logger = createLogger('analyzeResume');
 
-        // Call your Django analysis endpoint
-        const response = await axios.get(ANALYZE_ENDPOINT);
-        if (response.status === 200) {
-            console.log('Resume analysis complete');
-            return response.data;
-        } else {
-            console.error(`Failed to analyze resume: ${response.status}, ${response.statusText}`);
+    try {
+        logger.info(`Analyzing resume: ${filePathOrId}`);
+
+        // Call analysis endpoint
+        const response = await axios.get(`${ENV.ANALYZE_ENDPOINT}`);
+
+        if (response.status !== 200) {
+            logger.error(`Failed to analyze resume: ${response.status}, ${response.statusText}`);
             return null;
         }
-    } catch (e) {
-        console.error(`Error analyzing resume: ${e}`);
+
+        logger.info('Resume analysis complete');
+        return response.data;
+
+    } catch (error) {
+        logger.error(`Error analyzing resume: ${error instanceof Error ? error.message : String(error)}`);
         return null;
     }
 }
 
-async function sendMessage(phoneNumber: string, messageText: string) {
-    console.log(`Sending message to ${phoneNumber}: ${messageText.substring(0, 50)}...`);
+/**
+ * Send formatted analysis results to user
+ */
+async function sendAnalysisResult(phoneNumber: string, analysis: ResumeAnalysis): Promise<void> {
+    const logger = createLogger('sendAnalysisResult');
+
+    // Format the overall analysis summary
+    let message = "📄 *Resume Analysis Complete* 📄\n\n";
+
+    // Add key skills
+    if (analysis.skills && analysis.skills.length > 0) {
+        message += "*Key Skills Identified:*\n";
+        analysis.skills.slice(0, 5).forEach(skill => {
+            message += `• ${skill}\n`;
+        });
+
+        if (analysis.skills.length > 5) {
+            message += `• ...and ${analysis.skills.length - 5} more\n`;
+        }
+        message += "\n";
+    }
+
+    // Add improvement suggestions
+    if (analysis.improvement_suggestions && analysis.improvement_suggestions.length > 0) {
+        message += "*Improvement Suggestions:*\n";
+        analysis.improvement_suggestions.forEach(suggestion => {
+            message += `• ${suggestion}\n`;
+        });
+        message += "\n";
+    }
+
+    // Add job matches if available
+    if (analysis.matched_jobs && analysis.matched_jobs.length > 0) {
+        message += "*Top Job Matches:*\n";
+
+        for (let i = 0; i < Math.min(3, analysis.matched_jobs.length); i++) {
+            const job = analysis.matched_jobs[i];
+            const matchPercentage = Math.round((job.similarity || 0) * 100);
+
+            message += `${i + 1}. ${job.domain} (${matchPercentage}% match)\n`;
+        }
+
+        message += "\nFor detailed job analysis, say 'jobs'.\n";
+    }
+
+    // Send the message
+    await sendMessage(phoneNumber, message);
+
+    logger.info(`Sent analysis results to ${phoneNumber}`);
+}
+
+/**
+ * Send WhatsApp message
+ */
+async function sendMessage(phoneNumber: string, messageText: string): Promise<boolean> {
+    const logger = createLogger('sendMessage');
+    logger.info(`Sending message to ${phoneNumber}: ${messageText.substring(0, 50)}...`);
 
     const headers = {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${ACCESS_TOKEN}`
+        "Authorization": `Bearer ${ENV.WHATSAPP_ACCESS_TOKEN}`
     };
 
     const payload = {
@@ -498,17 +525,179 @@ async function sendMessage(phoneNumber: string, messageText: string) {
     };
 
     try {
-        const url = `${WHATSAPP_API_URL}/${PHONE_NUMBER_ID}/messages`;
-        console.log(`Sending message to WhatsApp API: ${url}`);
+        const url = `${ENV.WHATSAPP_API_URL}/${ENV.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+        logger.info(`Sending message to WhatsApp API: ${url}`);
 
         const response = await axios.post(url, payload, { headers });
 
-        if (response.status === 200) {
-            console.log(`Message sent successfully to ${phoneNumber}`);
-        } else {
-            console.error(`Error sending message: ${response.status}, ${response.data}`);
+        if (response.status !== 200) {
+            logger.error(`Error sending message: ${response.status}, ${JSON.stringify(response.data)}`);
+            return false;
         }
-    } catch (e) {
-        console.error(`Error sending message: ${e}`);
+
+        logger.info(`Message sent successfully to ${phoneNumber}`);
+        return true;
+
+    } catch (error) {
+        logger.error(`Error sending message: ${error instanceof Error ? error.message : String(error)}`);
+        return false;
     }
 }
+
+/**
+ * Parse job analysis markdown text into structured data
+ */
+function parseJobAnalysisForWebhook(markdownText: string): JobAnalysis[] {
+    const jobs: JobAnalysis[] = [];
+    const jobSections = markdownText.split('### Job');
+
+    // Skip the first empty section if it exists
+    for (let i = 1; i < jobSections.length; i++) {
+        const section = jobSections[i];
+
+        // Extract job title
+        const titleMatch = section.match(/(\d+): ([^\n]+)/);
+        const jobNumber = titleMatch ? titleMatch[1] : i.toString();
+        const jobTitle = titleMatch ? titleMatch[2].trim() : `Job ${i}`;
+
+        // Extract match assessment
+        const matchAssessmentMatch = section.match(/#### Match Assessment\s*([^\n]+)/);
+        const matchAssessment = matchAssessmentMatch ? matchAssessmentMatch[1].trim() : "";
+
+        // Determine match level
+        let matchLevel: 'High' | 'Moderate' | 'Low' = "Low";
+        if (matchAssessment.includes("well") && !matchAssessment.includes("not")) {
+            matchLevel = "High";
+        } else if (matchAssessment.includes("moderately")) {
+            matchLevel = "Moderate";
+        }
+
+        // Extract key matching skills
+        const keySkillsMatch = section.match(/#### Key Matching Skills\s*([\s\S]*?)(?=####|$)/);
+        const keySkills = keySkillsMatch
+            ? keySkillsMatch[1]
+                .split('*')
+                .filter(item => item.trim())
+                .map(item => item.trim())
+            : [];
+
+        // Extract missing skills
+        const missingSkillsMatch = section.match(/#### Missing Skills\s*([\s\S]*?)(?=####|$)/);
+        const missingSkills = missingSkillsMatch
+            ? missingSkillsMatch[1]
+                .split('*')
+                .filter(item => item.trim())
+                .map(item => item.trim())
+            : [];
+
+        // Extract recommended learning
+        const learningMatch = section.match(/#### Recommended Learning\s*([\s\S]*?)(?=###|$)/);
+        const recommendedLearning = learningMatch
+            ? learningMatch[1]
+                .split('*')
+                .filter(item => item.trim())
+                .map(item => item.trim())
+            : [];
+
+        // Create job object
+        jobs.push({
+            job_id: jobNumber,
+            title: jobTitle,
+            match: {
+                level: matchLevel,
+                assessment: matchAssessment
+            },
+            skills: {
+                matching: keySkills,
+                missing: missingSkills
+            },
+            learning_recommendations: recommendedLearning
+        });
+    }
+
+    return jobs;
+}
+
+/**
+ * Format analysis result for webhook API
+ */
+function formatAnalysisForWebhook(analysisResult: ResumeAnalysis): WebhookResponse {
+    // Create base response structure
+    const webhookResponse: WebhookResponse = {
+        success: true,
+        timestamp: new Date().toISOString(),
+        data: {
+            skills: analysisResult.skills || [],
+            experience_years: analysisResult.experience_years || null,
+            education: analysisResult.education || null,
+            missing_keywords: analysisResult.missing_keywords || [],
+            improvement_suggestions: analysisResult.improvement_suggestions || [],
+            matched_jobs: []
+        }
+    };
+
+    // Format matched jobs if they exist
+    if (analysisResult.matched_jobs && analysisResult.matched_jobs.length > 0) {
+        webhookResponse.data.matched_jobs = analysisResult.matched_jobs.map(job => ({
+            job_id: job.job_id || null,
+            title: job.domain || "Unnamed Position",
+            similarity: job.similarity ? Math.round(job.similarity * 100) : null,
+            application_link: job.application_link || null,
+            description_preview: job.description ?
+                job.description.substring(0, 150) + (job.description.length > 150 ? "..." : "") :
+                null
+        }));
+    }
+
+    // Parse and add job analysis if it exists
+    if (analysisResult.job_analysis) {
+        const parsedJobs = parseJobAnalysisForWebhook(analysisResult.job_analysis);
+
+        // Merge the detailed job analysis with the matched jobs data
+        if (parsedJobs.length > 0) {
+            if (webhookResponse.data.matched_jobs.length > 0) {
+                // If we have both matched_jobs and parsed jobs, try to merge them by linking job_id
+                webhookResponse.data.matched_jobs = webhookResponse.data.matched_jobs.map(matchedJob => {
+                    // Find corresponding parsed job
+                    const parsedJob = parsedJobs.find(job => job.job_id === matchedJob.job_id);
+
+                    if (parsedJob) {
+                        return {
+                            ...matchedJob,
+                            analysis: {
+                                match_level: parsedJob.match.level,
+                                match_assessment: parsedJob.match.assessment,
+                                matching_skills: parsedJob.skills.matching,
+                                missing_skills: parsedJob.skills.missing,
+                                recommended_learning: parsedJob.learning_recommendations
+                            }
+                        };
+                    }
+                    return matchedJob;
+                });
+            } else {
+                // If no matched_jobs but we have parsed jobs, use those
+                webhookResponse.data.job_analysis = parsedJobs;
+            }
+        }
+    }
+
+    return webhookResponse;
+}
+
+/**
+ * Simple logging utility
+ */
+function createLogger(context: string) {
+    return {
+        info: (message: string) => console.log(`[${context}] INFO: ${message}`),
+        warn: (message: string) => console.warn(`[${context}] WARN: ${message}`),
+        error: (message: string) => console.error(`[${context}] ERROR: ${message}`)
+    };
+}
+
+// Export for testing purposes
+export {
+    parseJobAnalysisForWebhook,
+    formatAnalysisForWebhook
+};

@@ -6,10 +6,10 @@ import { NextApiRequest, NextApiResponse } from 'next';
 export async function POST(request: Request) {
   try {
     const data = await request.json();
-    
+
     // Replace with your Django backend URL
-    const DJANGO_API_URL = process.env.DJANGO_API_URL || 'http://localhost:8000';
-    
+    const DJANGO_API_URL = process.env.DJANGO_BACKEND_URL || 'http://localhost:8000';
+
     const response = await fetch(`${DJANGO_API_URL}/api/upload-job-posting/`, {
       method: 'POST',
       headers: {
@@ -19,16 +19,16 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify(data),
     });
-    
+
     const responseData = await response.json();
-    
+
     if (!response.ok) {
       return new Response(JSON.stringify(responseData), {
         status: response.status,
         headers: { 'Content-Type': 'application/json' }
       });
     }
-    
+
     return new Response(JSON.stringify(responseData), {
       status: 201,
       headers: { 'Content-Type': 'application/json' }
@@ -47,13 +47,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
-  
+
   try {
     const data = req.body;
-    
+
     // Replace with your Django backend URL
     const DJANGO_API_URL = process.env.DJANGO_API_URL || 'http://localhost:8000';
-    
+
     const response = await fetch(`${DJANGO_API_URL}/api/upload-job-posting/`, {
       method: 'POST',
       headers: {
@@ -63,13 +63,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
       body: JSON.stringify(data),
     });
-    
+
     const responseData = await response.json();
-    
+
     if (!response.ok) {
       return res.status(response.status).json(responseData);
     }
-    
+
     return res.status(201).json(responseData);
   } catch (error) {
     console.error('Error in job posting API route:', error);

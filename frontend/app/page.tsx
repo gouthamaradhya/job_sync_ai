@@ -94,7 +94,7 @@ const Page = () => {
             </Button>
           </RegisterLink>
 
-          <LoginLink postLoginRedirectURL="/dashboard">
+          <LoginLink postLoginRedirectURL="/Dashboard">
             <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-300 rounded-full px-6 shadow-md hover:shadow-lg">
               Log In
             </Button>
