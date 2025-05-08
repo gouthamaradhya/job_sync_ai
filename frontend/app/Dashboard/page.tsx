@@ -124,7 +124,7 @@ const Dashboard = () => {
 
     return (
         <>
-            <div className="flex justify-between shadow-md bg-[#9CAFB7] dark:shadow-gray-800 h-auto">
+            <div className="flex justify-between shadow-md  dark:shadow-gray-800 h-auto">
                 <div className="flex gap-2 items-center">
                     <Image src="/images/logo.svg" alt="Job Sync AI Logo" width={50} height={50} className="m-2" />
                     <h2 className="font-bold text-xl text-logo">Job Sync AI</h2>
