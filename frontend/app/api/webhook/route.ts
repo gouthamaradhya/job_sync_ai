@@ -325,7 +325,7 @@ async function analyzeResume(filePathOrId: string): Promise<ResumeAnalysis | nul
         logger.info(`Analyzing resume: ${filePathOrId}`);
 
         // Call analysis endpoint
-        const response = await axios.get(`${ENV.ANALYZE_ENDPOINT}?file_path=${encodeURIComponent(filePathOrId)}`);
+        const response = await axios.get(`${ENV.ANALYZE_ENDPOINT}`);
 
         if (response.status !== 200) {
             logger.error(`Failed to analyze resume: ${response.status}, ${response.statusText}`);
