@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 7, "column": 0}, "map": {"version":3,"sources":["file:///Users/gouthamswamydd/Documents/GitHub/job_sync_ai/frontend/app/About/page.tsx"],"sourcesContent":["\"use client\"\nimport React from \"react\";\n\nconst about = () => {\n\n\n\n    return (\n        <>\n            hello\n        </>\n    )\n\n}\n\nexport default about"],"names":[],"mappings":";;;;AAAA;;AAGA,MAAM,QAAQ;IAIV,qBACI;kBAAE;;AAKV;uCAEe"}},
-    {"offset": {"line": 22, "column": 0}, "map": {"version":3,"sources":[],"names":[],"mappings":"A"}}]
-}

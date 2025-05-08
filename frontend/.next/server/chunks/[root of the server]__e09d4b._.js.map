@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 111, "column": 0}, "map": {"version":3,"sources":["file:///Users/gouthamswamydd/Documents/GitHub/job_sync_ai/frontend/app/api/auth/%5BkindeAuth%5D/route.ts"],"sourcesContent":["import { handleAuth } from \"@kinde-oss/kinde-auth-nextjs/server\";\nexport const GET = handleAuth();"],"names":[],"mappings":";;;AAAA;;AACO,MAAM,MAAM,CAAA,GAAA,sLAAA,CAAA,aAAU,AAAD"}},
-    {"offset": {"line": 117, "column": 0}, "map": {"version":3,"sources":[],"names":[],"mappings":"A"}}]
-}
