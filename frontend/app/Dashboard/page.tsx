@@ -10,20 +10,12 @@ import {
     navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu";
 import Link from "next/link";
-import { Moon, Sun } from "lucide-react";
-import { Toggle } from "@radix-ui/react-toggle";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Image from "next/image";
 import axios from "axios";
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
+
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import ResumeAnalysisResult from "@/components/AnalysisResult";
@@ -60,7 +52,7 @@ const FilePreview = ({ file }: { file: File | null }) => {
 
 const Dashboard = () => {
     const { toast } = useToast();
-    const { theme, setTheme } = useTheme();
+
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [analysisResult, setAnalysisResult] = useState<any>(null);
     const [mounted, setMounted] = useState(false);

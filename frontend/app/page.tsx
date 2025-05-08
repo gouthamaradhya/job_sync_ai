@@ -1,7 +1,6 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { RegisterLink, LoginLink } from "@kinde-oss/kinde-auth-nextjs/components";
-import Navbar from "@/components/Navbar";
 import Image from "next/image";
 import Card from "@/components/Card";
 
