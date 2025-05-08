@@ -10,8 +10,7 @@ import {
     navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu";
 import Link from "next/link";
-import { Moon, Sun } from "lucide-react";
-import { Toggle } from "@radix-ui/react-toggle";
+import { Bell, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Image from "next/image";
@@ -29,6 +28,16 @@ import { useToast } from "@/hooks/use-toast";
 import ResumeAnalysisResult from "@/components/AnalysisResult";
 import DomainSearch from "@/components/DomainSearch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { User } from "lucide-react";
 
 const FilePreview = ({ file }: { file: File | null }) => {
     const [preview, setPreview] = useState<string | null>(null);
@@ -66,6 +75,7 @@ const dashboard = () => {
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [analysisResult, setAnalysisResult] = useState<any>(null);
     const [mounted, setMounted] = useState(false);
+    const [notifications, setNotifications] = useState(2);
 
     useEffect(() => {
         setMounted(true);
@@ -73,6 +83,10 @@ const dashboard = () => {
     }, [selectedFile]);
 
     if (!mounted) return null; // Prevents hydration mismatch
+
+    const toggleTheme = () => {
+        setTheme(theme === "dark" ? "light" : "dark");
+    };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files ? e.target.files[0] : null;
@@ -126,26 +140,96 @@ const dashboard = () => {
 
     return (
         <>
-            <div className="flex justify-between shadow-md bg-[#9CAFB7] dark:shadow-gray-800 h-auto">
-                <div className="flex gap-2 items-center">
-                    <Image src="/images/logo.svg" alt="Job Sync AI Logo" width={50} height={50} className="m-2" />
-                    <h2 className="font-bold text-xl text-logo">Job Sync AI</h2>
+            {/* Enhanced professional navbar */}
+            <div className="flex justify-between items-center shadow-lg bg-white dark:bg-gray-900 h-16 sticky top-0 z-50 px-4 md:px-8 border-b border-gray-100 dark:border-gray-800 transition-all duration-300">
+                <div className="flex gap-3 items-center">
+                    <div className="relative group">
+                        <Image 
+                            src="/images/logo.svg" 
+                            alt="Job Sync AI Logo" 
+                            width={42} 
+                            height={42}
+                            className="m-1 transition-transform duration-300 group-hover:scale-110" 
+                        />
+                        <div className="absolute -bottom-1 left-1/2 w-0 h-0.5 bg-blue-500 group-hover:w-full transition-all duration-300" style={{ transform: 'translateX(-50%)' }}></div>
+                    </div>
+                    <h2 className="font-bold text-xl bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Job Sync AI</h2>
                 </div>
-                <div className="flex gap-5">
 
-                    <NavigationMenu>
+                <div className="flex items-center gap-5">
+                    <NavigationMenu className="hidden md:block">
                         <NavigationMenuList>
                             {["Home", "About", "Contact", "Help"].map((item) => (
                                 <NavigationMenuItem key={item}>
-                                    <Link href={`/${item}`} legacyBehavior passHref>
-                                        <NavigationMenuLink className={navigationMenuTriggerStyle()}>{item}</NavigationMenuLink>
+                                    <Link href={`/${item.toLowerCase()}`} legacyBehavior passHref>
+                                        <NavigationMenuLink className={navigationMenuTriggerStyle()}>
+                                            {item}
+                                        </NavigationMenuLink>
                                     </Link>
                                 </NavigationMenuItem>
                             ))}
                         </NavigationMenuList>
                     </NavigationMenu>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-3">
+                        <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={toggleTheme}
+                            className="hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+                        >
+                            {theme === "dark" ? (
+                                <Sun className="h-5 w-5 text-yellow-400" />
+                            ) : (
+                                <Moon className="h-5 w-5 text-gray-700" />
+                            )}
+                        </Button>
+
+                        <div className="relative">
+                            <Button 
+                                variant="ghost" 
+                                size="icon"
+                                className="hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+                            >
+                                <Bell className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+                                {notifications > 0 && (
+                                    <span className="absolute top-0 right-0 h-4 w-4 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                                        {notifications}
+                                    </span>
+                                )}
+                            </Button>
+                        </div>
+
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" className="rounded-full p-0 h-10 w-10 overflow-hidden">
+                                    <Avatar>
+                                        <AvatarImage src="/images/job-seeker-avatar.jpg" alt="Job Seeker" />
+                                        <AvatarFallback className="bg-blue-600 text-white">JS</AvatarFallback>
+                                    </Avatar>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuLabel className="font-normal">
+                                    <div className="flex flex-col space-y-1">
+                                        <p className="text-sm font-medium">John Seeker</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">john@example.com</p>
+                                    </div>
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem>
+                                    <User className="mr-2 h-4 w-4" />
+                                    <span>Profile</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem>Settings</DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem className="text-red-500">Log out</DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
                 </div>
-            </div >
+            </div>
 
             <div className="flex justify-center mt-20">
                 <div className="w-3/4">
