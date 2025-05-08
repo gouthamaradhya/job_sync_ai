@@ -1,65 +1,39 @@
-// File: pages/api/webhook.js
+import { NextRequest } from 'next/server';
 import axios from 'axios';
 
-// Configure this to your ngrok URL during development
-// This should be stored in environment variables in production
 const DJANGO_BACKEND_URL = process.env.DJANGO_BACKEND_URL || 'https://your-ngrok-url.ngrok.io/webhook/';
 
-export default async function handler(req: any, res: any) {
+export async function GET(req: NextRequest) {
+    const { searchParams } = new URL(req.url);
+    const params = searchParams.toString();
+
     try {
-        // Handle GET request (webhook verification)
-        if (req.method === 'GET') {
-            // Forward query parameters to Django backend
-            const params = new URLSearchParams(req.query).toString();
-            const verificationUrl = `${DJANGO_BACKEND_URL}?${params}`;
+        const verificationUrl = `${DJANGO_BACKEND_URL}?${params}`;
+        const response = await axios.get(verificationUrl);
 
-            const response = await axios.get(verificationUrl);
-
-            // Return the verification challenge code
-            return res.status(response.status).send(response.data);
-        }
-
-        // Handle POST request (incoming WhatsApp messages)
-        else if (req.method === 'POST') {
-            // Forward the request body to Django backend
-            const response = await axios.post(DJANGO_BACKEND_URL, req.body, {
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            });
-
-            return res.status(response.status).json(response.data);
-        }
-
-        // Handle other methods
-        else {
-            return res.status(405).json({ message: 'Method not allowed' });
-        }
+        return new Response(response.data, { status: response.status });
     } catch (error: any) {
-        console.error('Error forwarding webhook request:', error);
-
-        // If there's a response error, forward the status and error message
-        if (error.response) {
-            return res.status(error.response.status).json({
-                error: true,
-                message: 'Error from Django backend',
-                details: error.response.data,
-            });
-        }
-
-        // For connection errors or other issues
-        return res.status(500).json({
-            error: true,
-            message: 'Failed to connect to Django backend',
+        console.error('GET webhook error:', error.message);
+        return new Response(JSON.stringify({ error: true, message: 'Error forwarding GET request' }), {
+            status: 500,
         });
     }
 }
 
-// Increase the body size limit for file uploads (if needed)
-export const config = {
-    api: {
-        bodyParser: {
-            sizeLimit: '10mb',
-        },
-    },
-};
+export async function POST(req: NextRequest) {
+    try {
+        const body = await req.json();
+        const response = await axios.post(DJANGO_BACKEND_URL, body, {
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+
+        return new Response(JSON.stringify(response.data), { status: response.status });
+    } catch (error: any) {
+        console.error('POST webhook error:', error.message);
+        return new Response(JSON.stringify({ error: true, message: 'Error forwarding POST request' }), {
+            status: 500,
+        });
+    }
+}
