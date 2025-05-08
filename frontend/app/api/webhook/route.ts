@@ -15,6 +15,7 @@ const ENV = {
 // Type definitions
 interface UserSession {
     state: 'new' | 'awaiting_confirmation' | 'awaiting_resume' | 'analysis_complete';
+    lastAnalysis?: ResumeAnalysis; // Added to store the last analysis
     [key: string]: any;
 }
 
@@ -91,6 +92,38 @@ interface JobAnalysis {
     learning_recommendations: string[];
 }
 
+interface WebhookResponseDataMatchedJobAnalysis {
+    match_level: 'High' | 'Moderate' | 'Low';
+    match_assessment: string;
+    matching_skills: string[];
+    missing_skills: string[];
+    recommended_learning: string[];
+}
+
+interface WebhookResponseDataMatchedJob {
+    job_id: string | null;
+    title: string;
+    similarity: number | null;
+    application_link: string | null;
+    description_preview: string | null;
+    analysis?: WebhookResponseDataMatchedJobAnalysis; // For merged analysis
+}
+
+interface WebhookResponseData {
+    skills: string[];
+    experience_years: number | null;
+    education: string | null;
+    missing_keywords: string[];
+    improvement_suggestions: string[];
+    matched_jobs: WebhookResponseDataMatchedJob[];
+    job_analysis?: JobAnalysis[]; // For when only parsed job_analysis text exists
+}
+
+interface FormattedWebhookResponse {
+    success: boolean;
+    timestamp: string;
+    data: WebhookResponseData;
+}
 // In-memory session store (use Redis or database in production)
 const userSessions: Record<string, UserSession> = {};
 
@@ -179,7 +212,69 @@ function parseJobAnalysisForWebhook(markdownText: string): JobAnalysis[] {
     return jobs;
 }
 
+/**
+ * Format analysis result for webhook API
+ */
+function formatAnalysisForWebhook(analysisResult: ResumeAnalysis): FormattedWebhookResponse {
+    const responseData: WebhookResponseData = { // Use the new interface
+        skills: analysisResult.skills || [],
+        experience_years: analysisResult.experience_years || null,
+        education: analysisResult.education || null,
+        missing_keywords: analysisResult.missing_keywords || [],
+        improvement_suggestions: analysisResult.improvement_suggestions || [],
+        matched_jobs: [] // Initialize as WebhookResponseDataMatchedJob[]
+    };
 
+    if (analysisResult.matched_jobs && analysisResult.matched_jobs.length > 0) {
+        responseData.matched_jobs = analysisResult.matched_jobs.map(job => ({
+            job_id: job.job_id || null,
+            title: job.domain || "Unnamed Position",
+            similarity: job.similarity ? Math.round(job.similarity * 100) : null,
+            application_link: job.application_link || null,
+            description_preview: job.description ?
+                job.description.substring(0, 150) + (job.description.length > 150 ? "..." : "") :
+                null
+            // 'analysis' field will be added below if applicable
+        }));
+    }
+
+    if (analysisResult.job_analysis) {
+        const parsedJobs: JobAnalysis[] = parseJobAnalysisForWebhook(analysisResult.job_analysis);
+
+        if (parsedJobs.length > 0) {
+            if (responseData.matched_jobs.length > 0) {
+                // Merge parsed job details into existing matched_jobs
+                responseData.matched_jobs = responseData.matched_jobs.map(matchedJob => {
+                    const parsedJobDetail = parsedJobs.find(pj => pj.job_id === matchedJob.job_id);
+
+                    if (parsedJobDetail) {
+                        return {
+                            ...matchedJob, // matchedJob is now correctly typed
+                            analysis: {
+                                match_level: parsedJobDetail.match.level,
+                                match_assessment: parsedJobDetail.match.assessment,
+                                matching_skills: parsedJobDetail.skills.matching,
+                                missing_skills: parsedJobDetail.skills.missing,
+                                recommended_learning: parsedJobDetail.learning_recommendations
+                            }
+                        };
+                    }
+                    return matchedJob;
+                });
+            } else {
+                // If no initial matched_jobs, but we parsed jobs from job_analysis string,
+                // store them in the dedicated 'job_analysis' field.
+                responseData.job_analysis = parsedJobs;
+            }
+        }
+    }
+
+    return {
+        success: true,
+        timestamp: new Date().toISOString(),
+        data: responseData
+    };
+}
 
 /**
  * Send formatted analysis results to user
@@ -228,6 +323,7 @@ async function sendAnalysisResult(phoneNumber: string, analysis: ResumeAnalysis)
 
     // Send the message
     await sendMessage(phoneNumber, message);
+    formatAnalysisForWebhook(analysis);
 
     logger.info(`Sent analysis results to ${phoneNumber}`);
 }
@@ -273,7 +369,67 @@ async function sendMessage(phoneNumber: string, messageText: string): Promise<bo
         return false;
     }
 }
+async function sendDetailedJobAnalysisMessage(phoneNumber: string, analysis: ResumeAnalysis): Promise<void> {
+    const logger = createLogger('sendDetailedJobAnalysis');
+    let jobsMessage = "📄 *Detailed Job Analysis* 📄\n\n";
+    let foundDetailedJobs = false;
 
+    if (analysis.job_analysis) {
+        const parsedDetailedJobs = parseJobAnalysisForWebhook(analysis.job_analysis);
+        if (parsedDetailedJobs.length > 0) {
+            foundDetailedJobs = true;
+            parsedDetailedJobs.forEach((jobDetail, index) => {
+                // Try to find the original matched job for application link, similarity score, and original title (domain)
+                const originalMatchedJob = analysis.matched_jobs?.find(
+                    mj => mj.job_id === jobDetail.job_id || mj.domain === jobDetail.title // Match by ID or title
+                );
+
+                const title = originalMatchedJob?.domain || jobDetail.title;
+                const similarityPercentage = originalMatchedJob?.similarity ? Math.round(originalMatchedJob.similarity * 100) : null;
+
+                jobsMessage += `*${index + 1}. ${title}*\n`;
+                if (similarityPercentage !== null) {
+                    jobsMessage += `  Match Score: ${similarityPercentage}%\n`;
+                }
+                jobsMessage += `  Assessment: ${jobDetail.match.assessment} (Level: ${jobDetail.match.level})\n`;
+
+                if (jobDetail.skills.matching.length > 0) {
+                    jobsMessage += `  Matching Skills: _${jobDetail.skills.matching.join(', ')}_\n`;
+                }
+                if (jobDetail.skills.missing.length > 0) {
+                    jobsMessage += `  Skills to Develop: _${jobDetail.skills.missing.join(', ')}_\n`;
+                }
+                if (jobDetail.learning_recommendations.length > 0) {
+                    jobsMessage += `  Recommended Learning: _${jobDetail.learning_recommendations.join(', ')}_\n`;
+                }
+                if (originalMatchedJob?.application_link) {
+                    jobsMessage += `  Apply Here: ${originalMatchedJob.application_link}\n`;
+                }
+                jobsMessage += "\n";
+            });
+        }
+    }
+
+    if (!foundDetailedJobs) {
+        // Fallback if job_analysis (markdown) isn't there or yielded no jobs,
+        // but matched_jobs might still exist from the summary.
+        if (analysis.matched_jobs && analysis.matched_jobs.length > 0) {
+            jobsMessage += "A summary of matched jobs was previously sent. The more detailed text-based analysis for each job is not available or couldn't be parsed.\nHere's the summary again:\n\n";
+            analysis.matched_jobs.slice(0, 3).forEach((job, i) => {
+                const matchPercentage = Math.round((job.similarity || 0) * 100);
+                jobsMessage += `${i + 1}. ${job.domain} (${matchPercentage}% match)\n`;
+                if (job.application_link) jobsMessage += `   Link: ${job.application_link}\n`;
+            });
+
+        } else {
+            jobsMessage += "No detailed job analysis data or matched jobs were found in your report.\n";
+        }
+    }
+
+    await sendMessage(phoneNumber, jobsMessage);
+    logger.info(`Sent detailed job analysis to ${phoneNumber}`);
+    await sendMessage(phoneNumber, "You can say 'hi' to analyze another resume, or ask other questions if supported.");
+}
 /**
  * Upload resume to backend service
  */
@@ -396,27 +552,48 @@ async function handleFileMessage(phoneNumber: string, message: WhatsAppMessage):
     const logger = createLogger('handleFileMessage');
     const session = userSessions[phoneNumber];
 
-    logger.info(`Handling file message from ${phoneNumber} (state: ${session.state})`);
-
-    // Check if we're expecting a resume
-    if (session.state !== 'awaiting_resume' && session.state !== 'analysis_complete') {
-        await sendMessage(
-            phoneNumber,
-            "I wasn't expecting a file yet. Please say 'hi' to start the resume analysis process."
-        );
+    // It's crucial to handle cases where session might not exist,
+    // especially in serverless environments or if an error occurred.
+    if (!session) {
+        logger.warn(`No session found for ${phoneNumber} during handleFileMessage. Initializing new session and prompting to start over.`);
+        // Initialize a new session if it's missing for some reason
+        userSessions[phoneNumber] = { state: 'new' };
+        await sendMessage(phoneNumber, "Sorry, there was an issue with your session. Please say 'hi' to start over.");
         return;
     }
 
-    // Determine file type and media ID
-    let mediaId: string | null = null;
-    let fileType: 'image' | 'document' | null = null;
+    logger.info(`Handling file message from ${phoneNumber} (state: ${session.state})`);
 
+    // Valid states to receive a file:
+    // 1. 'awaiting_resume': The user has confirmed they want to upload.
+    // 2. 'analysis_complete': The user might be sending a new resume for a fresh analysis.
+    // Other states ('new', 'awaiting_confirmation') are not expecting a file directly.
+    if (session.state !== 'awaiting_resume' && session.state !== 'analysis_complete') {
+        let replyMessage = "I wasn't expecting a file right now. ";
+        if (session.state === 'new') {
+            replyMessage += "Please say 'hi' to begin the resume analysis process.";
+        } else if (session.state === 'awaiting_confirmation') {
+            replyMessage += "Please reply 'yes' first if you'd like to upload your resume.";
+        }
+        await sendMessage(phoneNumber, replyMessage);
+        return;
+    }
+
+    // If session.state is 'analysis_complete', receiving a file implies starting a new analysis.
+    // Clear previous analysis data if necessary, or it will be overwritten.
+    if (session.state === 'analysis_complete') {
+        logger.info(`New resume received while previous analysis was complete for ${phoneNumber}. Starting fresh analysis.`);
+        session.lastAnalysis = undefined; // Clear out old analysis
+        // The state will naturally transition to 'analysis_complete' again after processing.
+    }
+
+    // Determine file type and media ID (original logic from your code)
+    let mediaId: string | null = null;
+    // ... (rest of your mediaId and fileType logic)
     if (message.image) {
-        fileType = 'image';
         mediaId = message.image.id;
         logger.info(`Received image with media ID: ${mediaId}`);
     } else if (message.document) {
-        fileType = 'document';
         mediaId = message.document.id;
         logger.info(`Received document with media ID: ${mediaId}, mime_type: ${message.document.mime_type || 'unknown'}`);
     }
@@ -430,37 +607,32 @@ async function handleFileMessage(phoneNumber: string, message: WhatsAppMessage):
         return;
     }
 
-    // Process the resume
+    // Process the resume (try-catch block for download, upload, analyze)
     try {
-        // Download step
         await sendMessage(phoneNumber, "Downloading your resume... Please wait.");
         const fileData = await downloadMedia(mediaId);
 
         if (!fileData) {
             throw new Error(`Failed to download media with ID ${mediaId}`);
         }
-
         logger.info(`Successfully downloaded media with ID ${mediaId}`);
 
-        // Upload step
         await sendMessage(phoneNumber, "Analyzing your resume... This may take a moment.");
         const uploadResponse = await uploadResume(fileData, mediaId);
 
-        if (!uploadResponse.success) {
-            throw new Error("Resume upload failed");
+        if (!uploadResponse.success || !uploadResponse.filePath) {
+            throw new Error(uploadResponse.error || "Resume upload failed");
         }
 
-        // Analysis step
-        const analysisResult = await analyzeResume(uploadResponse.filePath!);
+        const analysisResult = await analyzeResume(uploadResponse.filePath);
 
         if (!analysisResult) {
             throw new Error("Resume analysis failed");
         }
-
         logger.info(`Analysis complete for ${phoneNumber}`);
 
-        // Send analysis results
-        await sendAnalysisResult(phoneNumber, analysisResult);
+        session.lastAnalysis = analysisResult; // Store for 'jobs' command
+        await sendAnalysisResult(phoneNumber, analysisResult); // Sends summary
         session.state = 'analysis_complete';
 
     } catch (error) {
@@ -469,6 +641,8 @@ async function handleFileMessage(phoneNumber: string, message: WhatsAppMessage):
             phoneNumber,
             "I encountered an error while processing your resume. Please try uploading it again."
         );
+        // Optionally, guide the user or reset state, e.g.,
+        // session.state = 'awaiting_resume'; // or 'awaiting_confirmation'
     }
 }
 
@@ -480,47 +654,103 @@ async function handleTextMessage(phoneNumber: string, messageText: string): Prom
     messageText = messageText.toLowerCase().trim();
     const session = userSessions[phoneNumber];
 
+    // Ensure session exists, crucial for serverless environments
+    if (!session) {
+        logger.warn(`No session found for ${phoneNumber}. Initializing a new one.`);
+        userSessions[phoneNumber] = { state: 'new' };
+        // Fall through to 'new' state handling, typically a 'hi' prompt
+    }
+
     logger.info(`Handling text message '${messageText}' from ${phoneNumber} (state: ${session.state})`);
 
-    switch (true) {
-        // Welcome message
-        case messageText === 'hi' || messageText === 'hello':
+    // Universal commands like 'hi' or 'hello' should reset/start the conversation
+    if (messageText === 'hi' || messageText === 'hello') {
+        await sendMessage(
+            phoneNumber,
+            "👋 Welcome to Job Sync AI!\n\n" +
+            "I can help analyze your resume and provide personalized feedback. " +
+            "Would you like to upload your resume now? (Reply with 'yes' to proceed)"
+        );
+        session.state = 'awaiting_confirmation';
+        return; // Explicit return after handling
+    }
+
+    switch (session.state) {
+        case 'new': // If session was just initialized or reset to new
             await sendMessage(
                 phoneNumber,
-                "👋 Welcome to Job Sync AI!\n\n" +
-                "I can help analyze your resume and provide personalized feedback. " +
-                "Would you like to upload your resume now? (Reply with 'yes' to proceed)"
+                "👋 Welcome to Job Sync AI! Say 'hi' or 'hello' to get started with your resume analysis."
             );
-            session.state = 'awaiting_confirmation';
+            // State remains 'new' until user says 'hi'
             break;
 
-        // Resume upload prompt
-        case session.state === 'awaiting_confirmation' && (messageText === 'yes' || messageText === 'y'):
+        case 'awaiting_confirmation':
+            if (messageText === 'yes' || messageText === 'y') {
+                await sendMessage(
+                    phoneNumber,
+                    "Great! Please upload your resume as a PDF or image file."
+                );
+                session.state = 'awaiting_resume';
+            } else if (messageText === 'no' || messageText === 'n') {
+                await sendMessage(phoneNumber, "Okay, let me know if you change your mind. Say 'hi' to start over.");
+                session.state = 'new'; // Or some other appropriate state
+            } else {
+                await sendMessage(
+                    phoneNumber,
+                    "Please reply with 'yes' to upload your resume, or 'no' if you don't want to proceed right now. You can always say 'hi' to restart."
+                );
+            }
+            break;
+
+        case 'awaiting_resume':
+            // If user sends text instead of a file while awaiting resume
             await sendMessage(
                 phoneNumber,
-                "Great! Please upload your resume as a PDF or image file."
+                "I'm waiting for your resume file. Please upload it to continue. If you want to restart, say 'hi'."
             );
-            session.state = 'awaiting_resume';
             break;
 
-        // Analysis completed, user wants to analyze another resume
-        case session.state === 'analysis_complete':
-            await sendMessage(
-                phoneNumber,
-                "Do you want to analyze another resume? Reply with 'yes' to proceed."
-            );
-            session.state = 'awaiting_confirmation';
+        case 'analysis_complete':
+            if (messageText === 'jobs') {
+                if (session.lastAnalysis) {
+                    await sendDetailedJobAnalysisMessage(phoneNumber, session.lastAnalysis);
+                } else {
+                    await sendMessage(phoneNumber, "Sorry, I couldn't retrieve your last analysis details. Please try analyzing a resume again by saying 'hi'.");
+                    session.state = 'new'; // Reset state
+                }
+                // State remains 'analysis_complete' so they can ask again or start over
+            } else if (messageText === 'yes' || messageText === 'y' || messageText === 'analyze new' || messageText === 'another') {
+                // User wants to analyze another resume
+                await sendMessage(
+                    phoneNumber,
+                    "Okay, let's start with a new resume! " +
+                    "Would you like to upload your new resume now? (Reply with 'yes' to proceed)"
+                );
+                session.state = 'awaiting_confirmation';
+                session.lastAnalysis = undefined; // Clear previous analysis
+            } else {
+                await sendMessage(
+                    phoneNumber,
+                    "Your resume analysis is complete. You can:\n" +
+                    "• Say 'jobs' for a detailed job-by-job breakdown.\n" +
+                    "• Say 'yes' or 'analyze new' to start over with a different resume."
+                );
+            }
             break;
 
-        // Default response
         default:
+            // This case should ideally not be reached if all states are handled.
+            // It can act as a fallback.
+            logger.warn(`Unhandled state or message for user ${phoneNumber}: state=${session.state}, message='${messageText}'`);
             await sendMessage(
                 phoneNumber,
-                "I'm here to help analyze your resume. Say 'hi' to start over, or upload your resume if you're ready."
+                "I'm a bit confused. To analyze a resume, please say 'hi' to begin."
             );
+            session.state = 'new'; // Reset to a known state
             break;
     }
 }
+
 
 /**
  * Process an incoming WhatsApp message
