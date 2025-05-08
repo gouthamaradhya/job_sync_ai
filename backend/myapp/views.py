@@ -254,9 +254,9 @@ logger = logging.getLogger(__name__)
 
 # WhatsApp API settings
 WHATSAPP_API_URL = "https://graph.facebook.com/v18.0"
-VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "your_custom_verify_token")
-ACCESS_TOKEN = os.environ.get("WHATSAPP_ACCESS_TOKEN", "your_whatsapp_access_token")
-PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "your_whatsapp_phone_number_id")
+VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
+ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
+PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
 
 # User session tracking - simple in-memory store
 # In production, use a database or Redis
