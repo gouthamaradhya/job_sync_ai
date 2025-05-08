@@ -326,7 +326,7 @@ async function uploadResume(fileData: Buffer, mediaId: string) {
             },
         });
 
-        if (response.status === 200) {
+        if (response.status === 200 || response.status === 201) {
             console.log('Resume uploaded successfully');
             return {
                 success: true,
