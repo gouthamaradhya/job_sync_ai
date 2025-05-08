@@ -1,5 +1,5 @@
-// File: pages/api/webhook.ts
-import type { NextApiRequest, NextApiResponse } from 'next';
+// File: app/api/webhook/route.ts
+import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 
 // Environment variables (to be replaced with ngrok URLs in production)
@@ -17,52 +17,43 @@ interface UserSession {
     [key: string]: any;
 }
 
+// Note: This is not ideal for production as it will reset on server restarts
+// Use a database or Redis in production
 const userSessions: Record<string, UserSession> = {};
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-    console.log(`Received ${req.method} request to webhook`);
-
-    if (req.method === 'GET') {
-        // Handle verification request from Meta
-        return verifyWebhook(req, res);
-    } else if (req.method === 'POST') {
-        // Handle incoming messages
-        return processIncomingMessage(req, res);
-    } else {
-        return res.status(405).end(); // Method not allowed
-    }
-}
-
-function verifyWebhook(req: NextApiRequest, res: NextApiResponse) {
+// GET handler for webhook verification
+export async function GET(request: NextRequest) {
     console.log("Processing webhook verification request");
 
-    const mode = req.query['hub.mode'] as string;
-    const token = req.query['hub.verify_token'] as string;
-    const challenge = req.query['hub.challenge'] as string;
+    const searchParams = request.nextUrl.searchParams;
+    const mode = searchParams.get('hub.mode');
+    const token = searchParams.get('hub.verify_token');
+    const challenge = searchParams.get('hub.challenge');
 
     console.log(`Verification params - Mode: ${mode}, Token: ${token ? '*'.repeat(token.length) : 'none'}, Challenge: ${challenge}`);
 
     if (mode && token) {
         if (mode === 'subscribe' && token === VERIFY_TOKEN) {
             console.log("Webhook verified successfully!");
-            return res.status(200).send(challenge);
+            return new NextResponse(challenge, { status: 200 });
         } else {
             console.warn("Failed webhook verification - invalid token or mode");
-            return res.status(403).end(); // Forbidden
+            return new NextResponse(null, { status: 403 }); // Forbidden
         }
     }
 
     console.warn("Bad verification request - missing parameters");
-    return res.status(400).end(); // Bad request
+    return new NextResponse(null, { status: 400 }); // Bad request
 }
 
-async function processIncomingMessage(req: NextApiRequest, res: NextApiResponse) {
+// POST handler for incoming messages
+export async function POST(request: NextRequest) {
     try {
         // Log request headers for debugging
-        console.log(`Headers: ${JSON.stringify(req.headers)}`);
+        console.log(`Headers: ${JSON.stringify(Object.fromEntries(request.headers))}`);
 
         // Parse the request body
-        const data = req.body;
+        const data = await request.json();
         console.log(`Received webhook data: ${JSON.stringify(data).substring(0, 500)}...`);
 
         // Check if this is a WhatsApp Business API message
@@ -78,10 +69,10 @@ async function processIncomingMessage(req: NextApiRequest, res: NextApiResponse)
             }
         }
 
-        return res.status(200).end();
+        return new NextResponse(null, { status: 200 });
     } catch (e) {
         console.error(`Error processing message: ${e}`);
-        return res.status(500).end();
+        return new NextResponse(null, { status: 500 });
     }
 }
 
@@ -323,9 +314,9 @@ async function uploadResume(fileData: Buffer, mediaId: string) {
     try {
         console.log(`Uploading resume with mediaId: ${mediaId}`);
 
-        // Create FormData
+        // Create FormData for file upload
         const formData = new FormData();
-        const blob = new Blob([fileData]);
+        const blob = new Blob([fileData], { type: 'application/octet-stream' });
         formData.append('file', blob, `resume_${mediaId}.pdf`);
 
         // Upload to your Django backend
@@ -405,13 +396,4 @@ async function sendMessage(phoneNumber: string, messageText: string) {
     } catch (e) {
         console.error(`Error sending message: ${e}`);
     }
-}
-
-// Configure Next.js to accept larger file uploads
-export const config = {
-    api: {
-        bodyParser: {
-            sizeLimit: '10mb',
-        },
-    },
 }
