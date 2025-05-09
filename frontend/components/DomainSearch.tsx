@@ -39,16 +39,15 @@ interface JobListing {
 const DomainSearch = () => {
   const { toast } = useToast();
   const [domains, setDomains] = useState<string[]>([
-    "Software Development",
-    "Data Science",
-    "Marketing",
-    "Finance",
-    "Healthcare",
-    "Design",
-    "Education",
-    "Engineering",
-    "Customer Service",
+    "Backend Developer",
+    "Cloud Engineer",
+    "Data engineer",
+    "Devops Developer",
+    "Frontend Developer",
+    "Fullstack Developer",
     "Human Resources",
+    "Marketing",
+    "Software Development"
   ]);
   const [selectedDomain, setSelectedDomain] = useState<string>("");
   const [jobs, setJobs] = useState<JobListing[]>([]);
