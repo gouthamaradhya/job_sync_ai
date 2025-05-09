@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     const data = await request.json();
 
     // Replace with your Django backend URL
-    const DJANGO_API_URL = process.env.DJANGO_BACKEND_URL || 'http://localhost:8000';
+    const DJANGO_API_URL = process.env.DJANGO_BACKEND_URL;
 
     const response = await fetch(`${DJANGO_API_URL}/api/upload-job-posting/`, {
       method: 'POST',
