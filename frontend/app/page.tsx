@@ -136,7 +136,7 @@ const Page = () => {
               </Button>
             </RegisterLink>
 
-            <LoginLink postLoginRedirectURL="/dashboard">
+            <LoginLink postLoginRedirectURL="/Dashboard">
               <Button className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
                 Log In
               </Button>
@@ -167,7 +167,7 @@ const Page = () => {
             variants={staggerContainer}
           >
             <motion.div variants={fadeInUp}>
-              <LoginLink postLoginRedirectURL="/dashboard">
+              <LoginLink postLoginRedirectURL="/Dashboard">
                 <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-full px-8 py-6 text-lg shadow-lg hover:shadow-xl transition-all duration-300">
                   Get Started <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
@@ -244,7 +244,7 @@ const Page = () => {
             point2="Resume parsing & skill matching"
             point3="Personalized upskilling courses"
           >
-            <LoginLink postLoginRedirectURL="/dashboard">
+            <LoginLink postLoginRedirectURL="/Dashboard">
               <Button className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white py-5 px-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 flex items-center gap-2 font-medium">
                 Start Your Job Search
                 <ArrowRight className="h-5 w-5" />
