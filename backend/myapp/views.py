@@ -573,7 +573,6 @@ def insert_job_to_supabase(job_data):
         'description': job_data['description'],
         'salary': float(job_data['salary']),
         'contact_info': job_data['contact_info'],
-        'recruiter_id': str(job_data['recruiter_id']),
         'application_link': job_data['application_link']
     }).execute()
     
@@ -637,13 +636,15 @@ def upload_job_posting(request):
             return Response({"error": "Missing required fields"}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
+            job_id = uuid.uuid4()
             # Create and save the job description in the local database
             job_description = JobDescription.objects.create(
+                id = job_id,
                 title=title,
                 description=description,
                 company=company,
                 location=location,
-                domain=domain
+                domain=domain,
             )
             
             # For debugging - to ensure we're correctly creating the Django model
@@ -660,13 +661,12 @@ def upload_job_posting(request):
                 
                 try:
                     # Import supabase client inside try/except to handle potential import errors
-                    from .supabase_client import get_supabase_client
                     supabase_client = get_supabase_client()
                     
                     # Insert into Supabase job_description table
                     job_response = supabase_client.table("job_description").insert({
-                        "id": str(job_description.id),  # Use Django model ID as Supabase ID
-                        "uuid": str(job_description.id),  # Using the same ID for uuid field
+                        "id": str(job_description.id),  # Use Django model ID as Supabase ID, not job_description.id,  # Use Django model ID as Supabase ID
+                        "uuid": str(job_description.id),  # Using the same ID for uuid field, not job_description.id,  # Using the same ID for uuid field
                         "domain": domain,
                         "description": description,
                         "salary": 0,  # Default value as per schema
@@ -674,13 +674,23 @@ def upload_job_posting(request):
                         "recruiter_id": "00000000-0000-0000-0000-000000000000",  # Default UUID
                         "application_link": ""  # Empty application link
                     }).execute()
+
+                    if not job_response.data or len(job_response.data) == 0:
+                        print("Failed to insert job into Supabase:", job_response.error)
+                        return Response({
+                            "status": "partial_success", 
+                             "message": "Job posting created in local database but Supabase job insert failed",
+                             "job_id": str(job_description.id),
+                             "error": str(job_response.error)
+                     }, status=status.HTTP_201_CREATED)
                     
                     # Insert vector embedding into vector_table
                     vector_response = supabase_client.table("vector_table").insert({
-                        "id": str(uuid.uuid4()),  # Generate new UUID for vector table
-                        "job_id": str(job_description.id),  # Reference to job description
+                        "id": str(uuid.uuid4()),   # Generate new UUID for vector table
+                        "job_id": str(job_description.id),  # Reference to job description ID in job_description table, not job_description.id,  # Reference to job description
                         "embedding": vector  # The embedding vector
                     }).execute()
+
                     
                     print("Successfully inserted data into Supabase")
                     
